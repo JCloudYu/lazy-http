@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+
+.idea
+.vs_code
+
+package-lock.json
+*.log
