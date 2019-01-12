@@ -1,6 +1,6 @@
 {
 	"name": "lazy-http",
-	"version": "0.9.1",
+	"version": "0.9.2",
 	"description": "A simple web server that allows developers to serve static context",
 	"main": "index.js",
 	"scripts": {
