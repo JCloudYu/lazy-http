@@ -76,6 +76,17 @@ module.exports = {
 }
 ```
 
+## Logs ##
+This tool will generate verbose output in stdout and stderr. The stdout lists succeeded queries and stderr lists failed queries. The following line shows an example line of output, which contains time presented in ISO format, responded http status code, remote ip, remote port and requested URI.
+
+```
+[2019-01-12T05:16:52.157Z] 200 127.0.0.1:60977 /
+```
+
+Note that each output will contains leading and tailing terminal color controlling sequences! It is compatible to ANSI/VT100 Spec. So, some of the environment cannot read it normally! If you encounter a problem reading it, you should write a program to purge the sequences to get normal output!
+
+
+
 ## Features that will be delivered in the far far future... ##
 Since that this module is designed for testing purpose, following requirement of "testing environments" are planned to be delivered in the future ( when I have time or someone is willing to helpout... )
 
