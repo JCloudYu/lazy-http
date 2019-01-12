@@ -124,12 +124,16 @@
 		__ON_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
-			process.stdout.write(`\u001b[90m[${now}] 200 - ${req.url}\u001b[39m\n`);
+			const source = req.socket;
+			const source_info = `${source.remoteAddress}:${source.remotePort}`;
+			process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
 		})
 		.catch((e)=>{
 			const now = (new Date()).toISOString();
+			const source = req.socket;
+			const source_info = `${source.remoteAddress}:${source.remotePort}`;
 			const err = (e === 403 ? 403 : ( e === 404 ? 404 : 500 ));
-			process.stderr.write(`\u001b[91m[${now}] ${err} - ${req.url}\u001b[39m\n`);
+			process.stderr.write(`\u001b[91m[${now}] ${err} ${source_info} ${req.url}\u001b[39m\n`);
 		})
 		.finally(()=>{
 			if ( !res.finished ) {
