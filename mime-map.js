@@ -686,5 +686,6 @@ module.exports = {
 	"zir": "application/vnd.zul",
 	"zip": "application/zip",
 	"zmm": "application/vnd.handheld-entertainment+xml",
-	"zaz": "application/vnd.zzazz.deck+xml"
+	"zaz": "application/vnd.zzazz.deck+xml",
+	"md": "text/plain"
 };

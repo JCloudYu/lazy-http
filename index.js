@@ -148,7 +148,7 @@
 	
 	
 	async function __ON_REQUESTED(req, res) {
-		const REQUEST_URL = req.url;
+		const REQUEST_URL = __GET_REQUEST_PATH(req.url);
 		
 		
 		let targetURL = null;
@@ -224,5 +224,18 @@
 			.on('error', reject)
 			.pipe(res);
 		});
+	}
+	function __GET_REQUEST_PATH(input) {
+		let pos = input.indexOf('#');
+		if ( pos >= 0 ) {
+			input = input.substring(0, pos);
+		}
+		
+		pos = input.indexOf('?');
+		if ( pos >= 0 ) {
+			input = input.substring(0, pos);
+		}
+		
+		return input;
 	}
 })().catch((e)=>{throw e;});
