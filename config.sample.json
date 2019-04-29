@@ -1,0 +1,9 @@
+{
+	"host": "127.0.0.1",
+	"port": 8080,
+	"document_root": null,
+	"mime_map": null,
+	"proxy_map": [
+		"localhost::127.0.0.1:4321"
+	]
+}
