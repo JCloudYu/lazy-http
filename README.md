@@ -5,8 +5,8 @@ This module is aimed to provide a http server that can only serve static content
 Well, since that this module's purpose is very simple, "Provide simple and light-weighted http server for developers who only wants to test their website logic via valid http environment", this module has following features...
 
 - <span style='color:green'>This module dones't have any external dependency but the nodejs's built-in modules</span>
-- <span style='color:red'>This module will not export anything for developers so it cannot cooperate with other modules</span>
-- <span style='color:red'>This module will has massive perfornace impact when serving large files</span>
+- <span style='color:red'>This module is NOT designed to be used as a module</span>
+- <span style='color:red'>This module is NOT designed to serving large files</span>
 
 ## How to use ? ##
 All you need to do is to install the package globally using following command.
@@ -15,65 +15,24 @@ npm install -g lazy-http
 ```
 
 And use `lazy-http` command to instantiate a server. Following lines are the verbose output of the `lazy-http --help` command.
-```bash
+```text
 Usage: lazy-http [OPTIONS]
 OPTIONS:
-    --help Show this instruction
+        --help Show this instruction
     -h, --host [host] Set bind address
     -p, --port [port] Set listen port
     -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )
     -d, --document_root [path] Set document root. Default value is current working directory!
-        --mime-map [path] Path to the extended mime map
-        --path-map [path] Path to the extended path map
-```
+    -r, --rule [RULE_URI] Add and apply the rule uri!
+        --config [path] Path to the server configuration file
 
-It is worth note that `--mime-map` and `--path-map` options are the things that allows users to manipulate request processing logic.
-
-### --mime-map [path] ###
-This option tells the server mime types users want to serve but not listed in the builtin MIME map. This file can be a json file or js file. The followings are examples to json and js files.
-
-#### json ####
-```javascript
-{
-    "jpg": "image/jpeg",
-    "mjs": "application/javascript",
-    ...
-}
-```
-
-#### js ####
-```javascript
-module.exports = {
-    "jpg": "image/jpeg",
-    "mjs": "application/javascript",
-    ...
-}
-```
-
-### --path-map [path] ###
-This option tells the server to serve more content in other locations. The locations are maps written in json or javasctipt object. This sever will use the following format to parse incoming request.
-```http
-http://localhost{/sub-path}/path/of/the/file/in/the/sub-path/name.ext
-```
-Server will look for the corresponding directory's path when resolving the `/sub-path` of the incoming request. If the `/sub-path` is found in the map, then server will look for files located at the path. Otherwise, the server will look for files within the document root.
-
-
-The followings are examples to json and js files.
-
-#### json ####
-```javascript
-{
-    "/pkg": "/absolute/path/to/other/directory"
-    ...
-}
-```
-
-#### js ####
-```javascript
-module.exports = {
-    "/pkg": "/absolute/path/to/other/directory"
-    ...
-}
+RULE_URI:
+    proxy:[hostname]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!
+    proxy:[hostname]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!
+    proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!
+    proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!
+    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!
+    cors:[hostname]:[path-to-js-cors-handler] Attach a cors handler to a specific hostname!
 ```
 
 ## Logs ##
@@ -93,11 +52,9 @@ Well, since this module executable itself is a javascript module. You can easily
 node --inspect $(which lazy-http)
 ```
 
-
 ## Features that will be delivered in the far far future... ##
 Since that this module is designed for testing purpose, following requirement of "testing environments" are planned to be delivered in the future ( when I have time or someone is willing to helpout... )
 
-- Support SSL logic
 - Support http/2, http/3 logic
 - Support CORS control
 

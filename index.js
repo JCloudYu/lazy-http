@@ -11,29 +11,32 @@
 	const fs   = require('fs');
 	const http_proxy = require( './http-proxy.js' );
 	
-	const HOST_PROXY_FORMAT_CHECK = /^([a-zA-Z0-9\-_.]+)::([a-zA-Z0-9\-_.]+):([0-9]+)$/;
+	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+):(http|https|pipe)?:(.+)$/;
+	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
+	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):([a-zA-Z0-9\-_.:]+)$/;
+	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
 	
 	// region [ Process incoming arguments ]
 	const CONFIGURABLE_FIELDS = [
 		'host',
 		'port',
 		'unix',
+		'ssl_check',
 		'document_root',
-		'mime_map',
-		'proxy_map'
+		'rules'
 	];
 	const INPUT_CONF = Object.assign(Object.create(null), {
 		host:'localhost',
 		port:80,
 		unix:null,
-		document_root: process.cwd(),
-		mime_map: null,
-		proxy_map: [],
+		ssl_check:true,
+		document_root:process.cwd(),
+		rules: [],
 		
-		_proxy_map: Object.create(null),
-		_connection: [],
-		_mime: Object.create(null),
-		_paths: Object.create(null)
+		_proxy_map:Object.create(null),
+		_mime:Object.create(null),
+		_cors:Object.create(null),
+		_connection:[],
 	});
 	let ARGV = process.argv;
 	while ( ARGV.length > 0 ) {
@@ -47,10 +50,15 @@
 				process.stderr.write( `    -p, --port [port] Set listen port\n` );
 				process.stderr.write( `    -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )\n` );
 				process.stderr.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
-				process.stderr.write( `        --mime-map [path] Path to the extended mime map\n` );
-				process.stderr.write( `        --path-map [path] Path to the extended path map\n` );
-				process.stderr.write( `        --host-proxy [source-host::dest-host:dest-port] The http request will be proxied to the corresponding destination\n` );
+				process.stderr.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
 				process.stderr.write( `        --config [path] Path to the server configuration file\n` );
+				process.stderr.write( `\nRULE_URI:\n` );
+				process.stderr.write( `    proxy:[hostname]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stderr.write( `    proxy:[hostname]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stderr.write( `    proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
+				process.stderr.write( `    proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
+				process.stderr.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
+				process.stderr.write( `    cors:[hostname]:[path-to-js-cors-handler] Attach a cors handler to a specific hostname!\n` );
 				return;
 			
 			case "-u":
@@ -72,17 +80,11 @@
 			case "--document-root":
 				INPUT_CONF.document_root = ARGV.shift();
 				break;
-			
-			case "--mime-map":
-				INPUT_CONF.mime_map = ARGV.shift();
-				break;
 				
-			case "--host-proxy":
-			{
-				const proxy_info = ARGV.shift();
-				INPUT_CONF.proxy_map.push(proxy_info);
+			case "-r":
+			case "--rule":
+				INPUT_CONF.rules.push(ARGV.shift().trim());
 				break;
-			}
 			
 			case "--config":
 			{
@@ -111,7 +113,7 @@
 		}
 	}
 	
-	// NOTE: Prepare connection info
+	// NOTE: Prepare incoming connection info
 	if ( INPUT_CONF.unix ) {
 		INPUT_CONF._connection.push(INPUT_CONF.unix);
 	}
@@ -119,34 +121,70 @@
 		INPUT_CONF._connection.push(INPUT_CONF.port, INPUT_CONF.host);
 	}
 	
-	// NOTE: Load extended mime map
-	if ( INPUT_CONF.mime_map ) {
-		try {
-			INPUT_CONF._mime = require(path.resolve(process.cwd(), INPUT_CONF.mime_map));
-			if ( Object(INPUT_CONF._paths) !== INPUT_CONF._paths ) {
-				throw new Error("");
-			}
-		}
-		catch(e) {
-			process.stdout.write( `\u001b[91mCannot load extended mime map ${INPUT_CONF.mime_map}\n` );
-			process.exit(1);
-		}
-	}
 	
-	// NOTE: Process proxy map
-	for(const proxy_info of INPUT_CONF.proxy_map) {
-		const matches = proxy_info.match(HOST_PROXY_FORMAT_CHECK);
-		if ( !matches ) {
-			process.stderr.write( "Invalid format for --host-proxy option! src-host::dst-host:dst-port is required!" );
-			process.exit(1);
-		}
+	
+	// NOTE: Processing rules
+	for( const rule of INPUT_CONF.rules ) {
+		const scheme_pos = rule.indexOf(':');
+		const scheme = (scheme_pos >= 0) ? rule.substring(0, scheme_pos) : null;
 		
-		const src_host = matches[1].trim();
-		INPUT_CONF._proxy_map[src_host] = {
-			src_host: src_host,
-			dst_host: matches[2].trim(),
-			dst_port: matches[3].trim()
-		};
+		if ( scheme === "proxy" ) {
+			const matches = rule.match(PROXY_RULE);
+			if ( !matches ) {
+				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				continue;
+			}
+			
+			const proxy_conf = Object.create(null),
+				  [, hostname, dst_scheme, dst] = matches;
+			
+			if ( dst_scheme === "https" || dst_scheme === "http" ) {
+				const matches = dst.match(HOST_PORT_FORMAT);
+				if ( !matches ) {
+					process.stderr.write( `Invalid hostname and port detected! Skipping... (${rule})` );
+					continue;
+				}
+				
+				const [, host, port] = matches;
+				Object.assign(proxy_conf, {
+					src_host: hostname,
+					scheme: dst_scheme,
+					dst_host: host,
+					dst_port: port
+				});
+			}
+			else {
+				Object.assign(proxy_conf, {
+					src_host: hostname,
+					scheme: dst_scheme,
+					dst_path: dst
+				});
+			}
+			
+			INPUT_CONF._proxy_map[hostname] = proxy_conf;
+		}
+		else
+		if ( scheme === "mime" ) {
+			const matches = rule.match(MIME_RULE);
+			if ( !matches ) {
+				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				continue;
+			}
+			
+			const [, ext, mime] = matches;
+			INPUT_CONF._mime[ext] = mime;
+		}
+		else
+		if ( scheme === "cors" ) {
+			const matches = rule.match(CORS_RULE);
+			if ( !matches ) {
+				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				continue;
+			}
+			
+			const [, hostname, cors_handler] = matches;
+			INPUT_CONF._cors[hostname] = cors_handler;
+		}
 	}
 	// endregion
 	
@@ -156,10 +194,7 @@
 	
 	
 	const DOCUMENT_ROOT = path.resolve( process.cwd(), INPUT_CONF.document_root || '');
-	const SUB_PACKAGE_MAP = Object.assign({}, INPUT_CONF._paths);
-	const EXT_MIME_MAP = Object.assign(require('./mime-map.js'), INPUT_CONF._mime);
-	
-	
+	const EXT_MIME_MAP = Object.assign( require('./mime-map.js'), INPUT_CONF._mime );
 	
 	http.createServer((req, res)=>{
 		let _req_host = `${req.headers.host}`.trim();
@@ -168,7 +203,7 @@
 		_req_host = ( _req_host === "" ) ? undefined : _req_host;
 		
 		if ( _req_host !== undefined && INPUT_CONF._proxy_map[_req_host] !== undefined ) {
-			return http_proxy(INPUT_CONF._proxy_map[_req_host], req, res)
+			return http_proxy(_req_host, INPUT_CONF, req, res)
 			.finally(()=>{
 				if ( !res.finished ) {
 					res.end();
@@ -207,21 +242,6 @@
 		
 		
 		let targetURL = null;
-		const ITEM = REQUEST_URL.substring(0, REQUEST_URL.indexOf('/', 1)).toLowerCase();
-		for ( const map in SUB_PACKAGE_MAP ) {
-			if ( map !== ITEM ) continue;
-			
-			const MAP_PATH = SUB_PACKAGE_MAP[map];
-			const REMAINING = REQUEST_URL.substring(map.length);
-			if ( typeof MAP_PATH !== "function" ) {
-				targetURL = `${MAP_PATH}${REMAINING}`;
-				break;
-			}
-			
-			targetURL = await MAP_PATH(req, res, REMAINING);
-		}
-		
-		
 		
 		// NOTE: The request has been handled
 		if ( targetURL === true ) { return; }
