@@ -9,11 +9,12 @@
 	const http = require( 'http' );
 	const path = require( 'path' );
 	const fs   = require('fs');
+	const {ParseURLPath, GenerateCORSProcessor} = require( './helper.js' );
 	const http_proxy = require( './http-proxy.js' );
 	
 	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+):(http|https|pipe)?:(.+)$/;
 	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
-	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):([a-zA-Z0-9\-_.:]+)$/;
+	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
 	
 	// region [ Process incoming arguments ]
@@ -33,7 +34,7 @@
 		document_root:process.cwd(),
 		rules: [],
 		
-		_proxy_map:Object.create(null),
+		_proxy:Object.create(null),
 		_mime:Object.create(null),
 		_cors:Object.create(null),
 		_connection:[],
@@ -161,10 +162,9 @@
 				});
 			}
 			
-			INPUT_CONF._proxy_map[hostname] = proxy_conf;
+			INPUT_CONF._proxy[hostname] = proxy_conf;
 		}
-		else
-		if ( scheme === "mime" ) {
+		else if ( scheme === "mime" ) {
 			const matches = rule.match(MIME_RULE);
 			if ( !matches ) {
 				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
@@ -174,16 +174,27 @@
 			const [, ext, mime] = matches;
 			INPUT_CONF._mime[ext] = mime;
 		}
-		else
-		if ( scheme === "cors" ) {
+		else if ( scheme === "cors" ) {
 			const matches = rule.match(CORS_RULE);
 			if ( !matches ) {
 				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
 				continue;
 			}
 			
-			const [, hostname, cors_handler] = matches;
-			INPUT_CONF._cors[hostname] = cors_handler;
+			const [, hostname, _handler_path] = matches;
+			const handler_path = path.resolve(process.cwd(), _handler_path);
+			try {
+				let cors_processor = null;
+				
+				const cors_handler = require(handler_path);
+				cors_processor = ( typeof cors_handler === "function" ) ? cors_handler : await GenerateCORSProcessor(cors_handler);
+				
+				if ( !cors_processor ) { throw new Error( "" ); }
+				
+				INPUT_CONF._cors[hostname] = cors_processor;
+			} catch(e) {
+				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+			}
 		}
 	}
 	// endregion
@@ -197,20 +208,34 @@
 	const EXT_MIME_MAP = Object.assign( require('./mime-map.js'), INPUT_CONF._mime );
 	
 	http.createServer((req, res)=>{
-		let _req_host = `${req.headers.host}`.trim();
-		let _div_pos  = _req_host.indexOf( ':' );
-		_req_host = ( _div_pos >= 0 ) ? _req_host.substring(0, _div_pos).trim() : _req_host;
-		_req_host = ( _req_host === "" ) ? undefined : _req_host;
+		let temp;
 		
-		if ( _req_host !== undefined && INPUT_CONF._proxy_map[_req_host] !== undefined ) {
-			return http_proxy(_req_host, INPUT_CONF, req, res)
+		// NOTE: Parse hostname from host
+		const RAW_HOST = `${req.headers.host}`.trim();
+		temp = RAW_HOST.indexOf(':');
+		const HOST = ( temp < 0 ) ? RAW_HOST : RAW_HOST.substring(0, temp).trim();
+		
+		// NOTE: Parse url
+		let _raw_url = req.url || '';
+		if ( _raw_url[0] !== "/" ) _raw_url = `/${_raw_url}`;
+		req.url_info = ParseURLPath(_raw_url);
+		
+		
+		
+		
+		// NOTE: CORS and Proxy will only be performed in hostname based proxy
+		if ( HOST && INPUT_CONF._proxy[HOST] !== undefined ) {
+			return http_proxy(HOST, INPUT_CONF, req, res)
 			.finally(()=>{
 				if ( !res.finished ) {
 					res.end();
 				}
 			});
 		}
-	
+		
+		
+		
+		// NOTE: Act as a default file server
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
