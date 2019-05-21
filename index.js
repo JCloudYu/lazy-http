@@ -34,6 +34,7 @@
 		document_root:process.cwd(),
 		rules: [],
 		
+		_proxy_only: false,
 		_proxy:Object.create(null),
 		_mime:Object.create(null),
 		_cors:Object.create(null),
@@ -86,6 +87,10 @@
 			case "--rule":
 				INPUT_CONF.rules.push(ARGV.shift().trim());
 				break;
+				
+			case "--proxy-only":
+				INPUT_CONF._proxy_only = true;
+				break;
 			
 			case "--config":
 			{
@@ -113,7 +118,9 @@
 				break;
 		}
 	}
+	// endregion
 	
+	// region [ Process the configurations read from incoming arguments ]
 	// NOTE: Prepare incoming connection info
 	if ( INPUT_CONF.unix ) {
 		INPUT_CONF._connection.push(INPUT_CONF.unix);
@@ -204,8 +211,9 @@
 	
 	
 	
-	const DOCUMENT_ROOT = path.resolve( process.cwd(), INPUT_CONF.document_root || '');
+	const DOCUMENT_ROOT = path.resolve( process.cwd(), INPUT_CONF.document_root||'' );
 	const EXT_MIME_MAP = Object.assign( require('./mime-map.js'), INPUT_CONF._mime );
+	const PROXY_ONLY = INPUT_CONF._proxy_only;
 	
 	http.createServer((req, res)=>{
 		let temp;
@@ -233,9 +241,18 @@
 			});
 		}
 		
+		if ( PROXY_ONLY ) {
+			res.writeHead( 404, { "Content-Type": "text/plain" } );
+			res.end( 'File not found.' );
+			return;
+		}
 		
 		
-		// NOTE: Act as a default file server
+		
+		
+		
+		
+		// region [ Act as a default file server ]
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
@@ -255,6 +272,7 @@
 				res.end();
 			}
 		});
+		// endregion
 	}).listen(...INPUT_CONF._connection);
 	
 	
