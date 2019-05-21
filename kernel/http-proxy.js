@@ -20,6 +20,7 @@ module.exports = async function handle_request(host, runtime, req, res) {
 async function handle_proxy_cors(cors, req, res) {
 	const PREFLIGHT = req.method === "OPTIONS";
 	const CORS_INFO = Object.freeze({
+		preflight: PREFLIGHT,
 		resource: req.url_info,
 		origin: req.headers['origin']||null,
 		method: PREFLIGHT ? (req.headers['access-control-request-method']||null) : req.method
@@ -43,16 +44,22 @@ async function handle_proxy_cors(cors, req, res) {
 		if ( allow_origin !== "*" ) {
 			_should_continue = _should_continue && ( req.headers['origin'] === allow_origin );
 		}
+		
 		response_headers[ 'Access-Control-Allow-Origin' ] = allow_origin;
 	}
 	
 	if ( allow_methods !== undefined && Array.isArray(allow_methods) ) {
 		_should_continue = _should_continue && ( allow_methods.indexOf(req.method) >= 0 );
-		response_headers[ 'Access-Control-Allow-Methods' ] = allow_methods.join(', ');
+		
+		if ( PREFLIGHT ) {
+			response_headers[ 'Access-Control-Allow-Methods' ] = allow_methods.join(', ');
+		}
 	}
 	
 	if ( allow_headers !== undefined && Array.isArray(allow_headers) ) {
-		response_headers[ 'Access-Control-Allow-Headers' ] = allow_headers.join(', ');
+		if ( PREFLIGHT ) {
+			response_headers[ 'Access-Control-Allow-Headers' ] = allow_headers.join(', ');
+		}
 	}
 	
 	if ( allow_credentials !== undefined ) {
@@ -60,11 +67,15 @@ async function handle_proxy_cors(cors, req, res) {
 	}
 	
 	if ( expose_headers !== undefined && Array.isArray(expose_headers) ) {
-		response_headers[ 'Access-Control-Expose-Headers' ] = expose_headers.join(', ');
+		if ( PREFLIGHT ) {
+			response_headers[ 'Access-Control-Expose-Headers' ] = expose_headers.join(', ');
+		}
 	}
 	
 	if ( max_age !== undefined && Number.isInteger(max_age) ) {
-		response_headers[ 'Access-Control-Max-Age' ] = max_age;
+		if ( PREFLIGHT ) {
+			response_headers[ 'Access-Control-Max-Age' ] = max_age;
+		}
 	}
 	// endregion
 	
@@ -78,6 +89,8 @@ async function handle_proxy_cors(cors, req, res) {
 		return false
 	}
 	
+	
+	res._cors_headers = response_headers;
 	return true;
 	// endregion
 }
@@ -130,6 +143,13 @@ async function handle_proxy_request(proxy, ssl_check, req, res) {
 			const now = (new Date()).toISOString();
 			const source = req.socket;
 			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
+			
+			// NOTE: Set the CORS headers to proxy result
+			for( let cors_header in res._cors_headers ) {
+				if ( proxy_response.headers[cors_header] === undefined ) {
+					proxy_response.headers[cors_header] = res._cors_headers[cors_header];
+				}
+			}
 			
 			res.writeHead(proxy_response.statusCode, proxy_response.headers);
 			proxy_response.pipe(res);
