@@ -9,8 +9,8 @@
 	const http = require( 'http' );
 	const path = require( 'path' );
 	const fs   = require('fs');
-	const {ParseURLPath, GenerateCORSProcessor} = require( './helper.js' );
-	const http_proxy = require( './http-proxy.js' );
+	const {ParseURLPath, GenerateCORSProcessor} = require( './kernel/helper.js' );
+	const http_proxy = require( './kernel/http-proxy.js' );
 	
 	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+):(http|https|pipe)?:(.+)$/;
 	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
@@ -212,26 +212,26 @@
 	
 	
 	const DOCUMENT_ROOT = path.resolve( process.cwd(), INPUT_CONF.document_root||'' );
-	const EXT_MIME_MAP = Object.assign( require('./mime-map.js'), INPUT_CONF._mime );
+	const EXT_MIME_MAP = Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
 	const PROXY_ONLY = INPUT_CONF._proxy_only;
 	
 	http.createServer((req, res)=>{
-		let temp;
 		
-		// NOTE: Parse hostname from host
+		// region [ Parse hostname from host ]
 		const RAW_HOST = `${req.headers.host}`.trim();
-		temp = RAW_HOST.indexOf(':');
-		const HOST = ( temp < 0 ) ? RAW_HOST : RAW_HOST.substring(0, temp).trim();
+		const PORT_DIV = RAW_HOST.indexOf(':');
+		const HOST = ( PORT_DIV < 0 ) ? RAW_HOST : RAW_HOST.substring(0, PORT_DIV).trim();
+		// endregion
 		
-		// NOTE: Parse url
+		// region [ Parse requested url ]
 		let _raw_url = req.url || '';
 		if ( _raw_url[0] !== "/" ) _raw_url = `/${_raw_url}`;
 		req.url_info = ParseURLPath(_raw_url);
+		// endregion
 		
 		
 		
-		
-		// NOTE: CORS and Proxy will only be performed in hostname based proxy
+		// region [ Do check hostname based proxy ]
 		if ( HOST && INPUT_CONF._proxy[HOST] !== undefined ) {
 			return http_proxy(HOST, INPUT_CONF, req, res)
 			.finally(()=>{
@@ -240,17 +240,15 @@
 				}
 			});
 		}
+		// endregion
+		
+		
 		
 		if ( PROXY_ONLY ) {
 			res.writeHead( 404, { "Content-Type": "text/plain" } );
 			res.end( 'File not found.' );
 			return;
 		}
-		
-		
-		
-		
-		
 		
 		// region [ Act as a default file server ]
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
