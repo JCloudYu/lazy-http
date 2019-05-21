@@ -144,7 +144,7 @@
 			}
 			
 			const proxy_conf = Object.create(null),
-				  [, hostname, dst_scheme, dst] = matches;
+				  [, hostname, dst_scheme="http", dst] = matches;
 			
 			if ( dst_scheme === "https" || dst_scheme === "http" ) {
 				const matches = dst.match(HOST_PORT_FORMAT);
