@@ -251,8 +251,8 @@
 		
 		
 		if ( PROXY_ONLY ) {
-			res.writeHead( 404, { "Content-Type": "text/plain" } );
-			res.end( 'File not found.' );
+			res.writeHead( 502, { "Content-Type": "text/plain" } );
+			res.end( 'Unexpected destination!' );
 			return;
 		}
 		
