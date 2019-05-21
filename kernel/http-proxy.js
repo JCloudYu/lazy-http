@@ -82,6 +82,7 @@ async function handle_proxy_cors(cors, req, res) {
 	// endregion
 }
 async function handle_proxy_request(proxy, ssl_check, req, res) {
+	const server_info = req.socket.server.address();
 	const headers = Object.assign(Object.create(null), req.headers);
 	headers[ 'X-Forwarded-Host' ] = headers['host'];
 	delete headers[ 'host' ];
@@ -128,28 +129,27 @@ async function handle_proxy_request(proxy, ssl_check, req, res) {
 		.on( 'response', (proxy_response)=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = `${source.remoteAddress}:${source.remotePort}`;
+			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
 			
-			if ( proxy_response.statusCode === 200 ) {
-				process.stdout.write(`\u001b[90m[${now}] ${proxy_response.statusCode} ${source_info} ${proxy.src_host}::${proxy.dst_host}:${proxy.dst_port}\u001b[39m\n`);
-			}
-			else {
-				process.stdout.write(`\u001b[91m[${now}] ${proxy_response.statusCode} ${source_info} ${proxy.src_host}::${proxy.dst_host}:${proxy.dst_port}\u001b[39m\n`);
-			}
-			
-		
 			res.writeHead(proxy_response.statusCode, proxy_response.headers);
 			proxy_response.pipe(res);
+			
+			
+			
+			const color_code = (proxy_response.statusCode === 200) ? '\u001b[90m' : '\u001b[91m';
+			process.stdout.write(`${color_code}[${now}] ${proxy_response.statusCode} ${source_info} ${proxy.rule}\u001b[39m\n`);
 		})
 		.on( 'error', (err)=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = `${source.remoteAddress}:${source.remotePort}`;
-			process.stdout.write(`\u001b[91m[${now}] 502 ${source_info} ${proxy.src_host}::${proxy.dst_host}:${proxy.dst_port} ${err.message}\u001b[39m\n`);
-			
-		
+			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
+
 			res.writeHead(502, {'Content-Type':'text/plain'});
 			res.end();
+			
+			
+			
+			process.stdout.write(`\u001b[91m[${now}] 502 ${source_info} ${proxy.rule} ${err.message}\u001b[39m\n`);
 		});
 		
 		req.pipe( proxy_request );

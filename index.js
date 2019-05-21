@@ -155,6 +155,7 @@
 				
 				const [, host, port] = matches;
 				Object.assign(proxy_conf, {
+					rule,
 					src_host: hostname,
 					scheme: dst_scheme,
 					dst_host: host,
@@ -163,6 +164,7 @@
 			}
 			else {
 				Object.assign(proxy_conf, {
+					rule,
 					src_host: hostname,
 					scheme: dst_scheme,
 					dst_path: dst
@@ -251,17 +253,18 @@
 		}
 		
 		// region [ Act as a default file server ]
+		const server_info = req.socket.server.address();
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = `${source.remoteAddress}:${source.remotePort}`;
+			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
 			process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
 		})
 		.catch((e)=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = `${source.remoteAddress}:${source.remotePort}`;
+			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
 			const err = (e === 403 ? 403 : ( e === 404 ? 404 : 500 ));
 			process.stderr.write(`\u001b[91m[${now}] ${err} ${source_info} ${req.url}\u001b[39m\n`);
 		})
@@ -280,7 +283,6 @@
 	
 	async function __ON_DEFAULT_HOST_REQUESTED(req, res) {
 		const REQUEST_URL = __GET_REQUEST_PATH(req.url);
-		
 		
 		let targetURL = null;
 		
