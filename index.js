@@ -24,7 +24,8 @@
 		'unix',
 		'ssl_check',
 		'document_root',
-		'rules'
+		'rules',
+		'proxy_only'
 	];
 	const INPUT_CONF = Object.assign(Object.create(null), {
 		host:'localhost',
@@ -33,6 +34,7 @@
 		ssl_check:true,
 		document_root:process.cwd(),
 		rules: [],
+		proxy_only:false,
 		
 		_proxy_only: false,
 		_proxy:Object.create(null),
@@ -89,7 +91,7 @@
 				break;
 				
 			case "--proxy-only":
-				INPUT_CONF._proxy_only = true;
+				INPUT_CONF.proxy_only = true;
 				break;
 			
 			case "--config":
@@ -128,6 +130,8 @@
 	else {
 		INPUT_CONF._connection.push(INPUT_CONF.port, INPUT_CONF.host);
 	}
+	
+	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
 	
 	
 	
