@@ -3,6 +3,8 @@
  *	Create: 2019/05/20
 **/
 const EXPORTED = Object.create(null);
+const RULE_CHECKER = /^((=|~\*) )?(.*)+$/;
+
 
 EXPORTED.ParseURLPath = function PARSE_URL_PATH(raw_url) {
 	let temp, url_info = Object.assign(Object.create(null), {
@@ -35,40 +37,32 @@ EXPORTED.ParseURLPath = function PARSE_URL_PATH(raw_url) {
 	url_info.path = raw_url;
 	return Object.freeze(url_info);
 };
-EXPORTED.GenerateCORSProcessor = function(cors_conf) {
-	const match_info = Object.create(null);
-	match_info.prefix = [];
-	match_info.regex  = [];
+EXPORTED.GenerateMatchProcessor = function(conf) {
+	const match_info = Object.assign(Object.create(null),{
+		exact: [], prefix: [], regex: []
+	});
 	
-	for( let match_rule in cors_conf ) {
-		if ( !cors_conf.hasOwnProperty(match_rule) ) continue;
+	for( let match_rule in conf ) {
+		if ( !conf.hasOwnProperty(match_rule) ) continue;
 		
 		
 		const rule = Object.create(null);
-		const handler = cors_conf[match_rule];
+		const handler = conf[match_rule];
 		
 		try {
-			// region [ Generate match handler ]
 			if ( typeof handler == "function" ) {
 				rule.handler = handler;
 			}
 			else if ( Object(handler) === handler ) {
 				rule.handler = ()=>{ return handler; };
 			}
-			else { throw new Error(""); }
-			// endregion
-		
-			// region [ Generate path matcher ]
-			if ( match_rule.substring(0, 3) === "*~ " ) {
-				match_rule = match_rule.substring(3);
-				rule.match = new RegExp(match_rule);
-				match_info.regex.push(rule);
-			}
 			else {
-				rule.match = match_rule;
-				match_info.prefix.push(rule);
+				throw new Error("");
 			}
-			// endregion
+		
+		
+			({match_rule:rule.match_rule, test:rule.test, type:rule.type} = BuildPathMatcher(match_rule));
+			match_info[rule.type].push(rule);
 		}
 		catch(e) {
 			// NOTE: This line should never be reached!
@@ -77,9 +71,8 @@ EXPORTED.GenerateCORSProcessor = function(cors_conf) {
 		}
 	}
 	
-	return CORSProcessor.bind(match_info);
+	return MatchProcessor.bind(match_info);
 };
-
 module.exports = Object.freeze(EXPORTED);
 
 
@@ -91,39 +84,112 @@ module.exports = Object.freeze(EXPORTED);
 **/
 
 /**
- *	@typedef {Object} CORSReqInfo
+ *	@typedef {Object} RequestInfo
  *	@property {ResourceInfo} [resource]
+ *	@property {String|null} [referer]
  *	@property {String|null} [origin]
  *	@property {String|null} [method]
 **/
 
-/** @param {CORSReqInfo} cors_info **/
-async function CORSProcessor(cors_info) {
-	const {resource:{path}} = cors_info;
+/**
+ *	@param {RequestInfo} req_info
+ *	@return {Object}
+**/
+async function MatchProcessor(req_info) {
+	const {resource:{path}} = req_info;
 	
-	let _matched_path = null, _handler = null;
-	for( let {match, handler} of this.prefix ) {
-		if ( match.length < path ) continue;
-		if ( path.substring(0, match.length) === match ) {
-			if ( _matched_path && match.length < _matched_path.length ) continue;
-			_handler = handler;
-			_matched_path  = match;
+	let _handler, _matched_path = null;
+	
+	// NOTE: Locate the longest exact match
+	for( let {test, handler} of this.exact ) {
+		const match_result = test(path);
+		if ( !match_result ) continue;
+		if ( _matched_path && match_result.length < _matched_path.length ) continue;
+		
+		_handler = handler;
+		_matched_path = match_result;
+	}
+	
+	if ( _handler ) {
+		return await _handler(req_info);
+	}
+	
+	// NOTE: Locate the longest prefix match
+	for( let {test, handler} of this.prefix ) {
+		const match_result = test(path);
+		if ( !match_result ) continue;
+		if ( _matched_path && match_result.length < _matched_path.length ) continue;
+		
+		_handler = handler;
+		_matched_path = match_result;
+	}
+	
+	// NOTE: Prefix "/" is a special case
+	if ( _handler && _matched_path !== "/" ) {
+		return await _handler(req_info);
+	}
+	
+	
+	
+	for( let {test, handler} of this.regex ) {
+		const match_result = test(path);
+		if ( !match_result ) continue;
+		if ( _matched_path && match_result.length < _matched_path.length ) continue;
+		
+		_handler = handler;
+		_matched_path = match_result;
+	}
+	
+	return _handler ? await _handler(req_info) : {};
+}
+
+/**
+ *	@param {String} match_rule
+ *	@return {{test:Function, type:String}}
+**/
+function BuildPathMatcher(match_rule) {
+	const [,, operator, rule] = match_rule.match(RULE_CHECKER);
+	
+	let _matcher = Object.create(null);
+	switch(operator) {
+		case "=":
+			_matcher.test = (path)=>{
+				if ( (path.length === rule.length) && (path === rule) ) {
+					return path;
+				}
+				else {
+					return null;
+				}
+			};
+			_matcher.type = "exact";
+			_matcher.match_rule = rule;
+			break;
+		
+		case "*~": {
+			const regex = new RegExp(rule);
+			_matcher.test = (path)=>{
+				const matches = path.match(regex);
+				return matches ? matches[0] : null;
+			};
+			_matcher.type = "regex";
+			_matcher.match_rule = rule;
+			break;
+		}
+			
+		default: {
+			_matcher.test = (path)=>{
+				if ( (path.length >= rule.length) && (path.substring(0, rule.length) === rule) ) {
+					return rule;
+				}
+				else {
+					return null;
+				}
+			};
+			_matcher.type = "prefix";
+			_matcher.match_rule = rule;
+			break;
 		}
 	}
 	
-	if ( _handler && _matched_path !== "/" ) {
-		return await _handler(cors_info);
-	}
-	
-	
-	
-	for( let {match, handler} of this.regex ) {
-		const matches = path.match(match);
-		if ( !matches || matches[0].length < _matched_path.length ) continue;
-		
-		_handler = handler;
-		_matched_path  = match[0];
-	}
-	
-	return _handler ? await _handler(cors_info) : {};
+	return _matcher;
 }

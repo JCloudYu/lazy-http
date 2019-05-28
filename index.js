@@ -9,30 +9,23 @@
 	const http = require( 'http' );
 	const path = require( 'path' );
 	const fs   = require('fs');
-	const {ParseURLPath, GenerateCORSProcessor} = require( './kernel/helper.js' );
+	const {ParseURLPath, GenerateMatchProcessor} = require( './kernel/helper.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
 	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+):(http|https|pipe)?:(.+)$/;
 	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
 	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):(.+)$/;
+	const CSP_RULE	 = /^csp:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
 	
 	// region [ Process incoming arguments ]
-	const CONFIGURABLE_FIELDS = [
-		'host',
-		'port',
-		'unix',
-		'ssl_check',
-		'document_root',
-		'rules',
-		'proxy_only'
-	];
+	const WORKING_DIR = process.cwd();
 	const INPUT_CONF = Object.assign(Object.create(null), {
 		host:'localhost',
 		port:80,
 		unix:null,
 		ssl_check:true,
-		document_root:process.cwd(),
+		document_root:WORKING_DIR,
 		rules: [],
 		proxy_only:false,
 		
@@ -40,17 +33,20 @@
 		_proxy:Object.create(null),
 		_mime:Object.create(null),
 		_cors:Object.create(null),
+		_csp:Object.create(null),
 		_connection:[],
 	});
-	let ARGV = process.argv;
+	let ARGV = process.argv.slice(2);
+	
 	while ( ARGV.length > 0 ) {
-		const option = ARGV.shift();
+		const option = ARGV.shift().trim();
 		switch(option) {
+			case "-h":
 			case "--help":
-				process.stderr.write( `Usage: lazy-http [OPTIONS]\n` );
-				process.stderr.write( `OPTIONS:\n` );
-				process.stderr.write( `        --help Show this instruction\n` );
-				process.stderr.write( `    -h, --host [host] Set bind address\n` );
+				process.stderr.write( `Usage: lazy-http [OPTION]... [PATH]...\n` );
+				process.stderr.write( `OPTION:\n` );
+				process.stderr.write( `    -h, --help Show this instruction\n` );
+				process.stderr.write( `    -H, --host [host] Set bind address\n` );
 				process.stderr.write( `    -p, --port [port] Set listen port\n` );
 				process.stderr.write( `    -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )\n` );
 				process.stderr.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
@@ -62,7 +58,13 @@
 				process.stderr.write( `    proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
 				process.stderr.write( `    proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
 				process.stderr.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
-				process.stderr.write( `    cors:[hostname]:[path-to-js-cors-handler] Attach a cors handler to a specific hostname!\n` );
+				process.stderr.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
+				process.stderr.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
+				process.stderr.write( `PATH:\n` );
+				process.stderr.write( `    This program will use the following rules to process the input paths.\n` );
+				process.stderr.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );
+				process.stderr.write( `        2. If the path is pointed to a valid directory, then the path will be used as the document root\n` );
+				process.stderr.write( `        3. If the path doesn't exist, then verbose error message and skipping\n` );
 				return;
 			
 			case "-u":
@@ -70,7 +72,7 @@
 				INPUT_CONF.unix = ARGV.shift();
 				break;
 			
-			case "-h":
+			case "-H":
 			case "--host":
 				INPUT_CONF.host = ARGV.shift();
 				break;
@@ -87,36 +89,55 @@
 				
 			case "-r":
 			case "--rule":
-				INPUT_CONF.rules.push(ARGV.shift().trim());
+				INPUT_CONF.rules.push({
+					rule:ARGV.shift().trim(),
+					base_dir: WORKING_DIR
+				});
 				break;
 				
 			case "--proxy-only":
 				INPUT_CONF.proxy_only = true;
 				break;
 			
+			case "-c":
 			case "--config":
+			case "--conf":
 			{
+				const config_path = path.resolve( WORKING_DIR, ARGV.shift().trim() );
 				try {
-					const config_path = path.resolve( process.cwd(), ARGV.shift().trim() );
-					const config = JSON.parse(fs.readFileSync(config_path).toString('utf8'));
-					if ( Object(config) !== config ) {
-						process.stderr.write( "Server configuration file must be started with a json object!\n" );
-						process.exit(1);
-					}
-					
-					CONFIGURABLE_FIELDS.forEach((field)=>{
-						if ( config[field] === undefined ) return;
-						INPUT_CONF[field] = config[field];
-					});
+					await __LOAD_CONFIG(config_path);
 				}
 				catch(e) {
-					process.stderr.write( "Cannot load server configuration file!\n" );
-					process.exit(1);
+					process.stderr.write( `Cannot load target configuration file! (${config_path}) Skipping with error (${e.message})\n` );
 				}
 				break;
 			}
 			
 			default:
+				// NOTE: Load and detect path type
+				const input_path = path.resolve( WORKING_DIR, option );
+				let file_state;
+				try {
+					file_state = fs.statSync(input_path);
+				}
+				catch(e) {
+					process.stderr.write( `Given path is invalid! (${input_path}) Skipping...\n` );
+				}
+				
+				
+				
+				// NOTE: Do the corresponding behaviors
+				if ( file_state.isDirectory() ) {
+					INPUT_CONF.document_root = input_path;
+				}
+				else {
+					try {
+						await __LOAD_CONFIG(input_path);
+					}
+					catch(e) {
+						process.stderr.write( `Cannot load target configuration file! (${config_path}) Skipping with error (${e.message})\n` );
+					}
+				}
 				break;
 		}
 	}
@@ -136,14 +157,14 @@
 	
 	
 	// NOTE: Processing rules
-	for( const rule of INPUT_CONF.rules ) {
+	for( const {rule, base_dir} of INPUT_CONF.rules ) {
 		const scheme_pos = rule.indexOf(':');
 		const scheme = (scheme_pos >= 0) ? rule.substring(0, scheme_pos) : null;
 		
 		if ( scheme === "proxy" ) {
 			const matches = rule.match(PROXY_RULE);
 			if ( !matches ) {
-				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				process.stderr.write( `Invalid rule format detected! (${rule}) Skipping...` );
 				continue;
 			}
 			
@@ -171,7 +192,7 @@
 					rule,
 					src_host: hostname,
 					scheme: dst_scheme,
-					dst_path: dst
+					dst_path: path.resolve(base_dir, dst)
 				});
 			}
 			
@@ -180,7 +201,7 @@
 		else if ( scheme === "mime" ) {
 			const matches = rule.match(MIME_RULE);
 			if ( !matches ) {
-				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				process.stderr.write( `Invalid rule format detected! (${rule}) Skipping...` );
 				continue;
 			}
 			
@@ -190,23 +211,45 @@
 		else if ( scheme === "cors" ) {
 			const matches = rule.match(CORS_RULE);
 			if ( !matches ) {
-				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				process.stderr.write( `Invalid rule format detected! (${rule}) Skipping...` );
 				continue;
 			}
 			
 			const [, hostname, _handler_path] = matches;
-			const handler_path = path.resolve(process.cwd(), _handler_path);
+			const handler_path = path.resolve(base_dir, _handler_path);
 			try {
 				let cors_processor = null;
 				
 				const cors_handler = require(handler_path);
-				cors_processor = ( typeof cors_handler === "function" ) ? cors_handler : await GenerateCORSProcessor(cors_handler);
+				cors_processor = ( typeof cors_handler === "function" ) ? cors_handler : await GenerateMatchProcessor(cors_handler);
 				
-				if ( !cors_processor ) { throw new Error( "" ); }
+				if ( !cors_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
 				
 				INPUT_CONF._cors[hostname] = cors_processor;
 			} catch(e) {
-				process.stderr.write( `Invalid rule format detected! Skipping... (${rule})` );
+				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
+			}
+		}
+		else if (scheme === "csp") {
+			const matches = rule.match(CSP_RULE);
+			if ( !matches ) {
+				process.stderr.write( `Invalid rule format detected! (${rule}) Skipping...` );
+				continue;
+			}
+			
+			const [, hostname, _handler_path] = matches;
+			const handler_path = path.resolve(base_dir, _handler_path);
+			try {
+				let csp_processor = null;
+				
+				const csp_handler = require(handler_path);
+				csp_processor = ( typeof csp_handler === "function" ) ? csp_handler : await GenerateMatchProcessor(csp_handler);
+				
+				if ( !csp_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
+				
+				INPUT_CONF._csp[hostname] = csp_processor;
+			} catch(e) {
+				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
 			}
 		}
 	}
@@ -217,7 +260,7 @@
 	
 	
 	
-	const DOCUMENT_ROOT = path.resolve( process.cwd(), INPUT_CONF.document_root||'' );
+	const DOCUMENT_ROOT = path.resolve( WORKING_DIR, INPUT_CONF.document_root||'' );
 	const EXT_MIME_MAP = Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
 	const PROXY_ONLY = INPUT_CONF._proxy_only;
 	
@@ -285,28 +328,74 @@
 	
 	
 	
-	async function __ON_DEFAULT_HOST_REQUESTED(req, res) {
-		const REQUEST_URL = __GET_REQUEST_PATH(req.url);
+	async function __LOAD_CONFIG(config_path) {
+		const config_dir  = path.dirname(config_path);
+		const period_pos = config_path.lastIndexOf( '.' );
+		const extension = (period_pos >= 0) ? config_path.substring(period_pos) : '';
+		if ( extension !== ".json" && extension !== ".js" ) {
+			process.stderr.write( "Server configuration file must be a json file or a js file! Skipping...\n" );
+			return;
+		}
 		
-		let targetURL = null;
-		
-		// NOTE: The request has been handled
-		if ( targetURL === true ) { return; }
-		if ( !targetURL ) {
-			targetURL = `${DOCUMENT_ROOT}${REQUEST_URL}`;
+		const config = require( config_path );
+		if ( Object(config) !== config ) {
+			process.stderr.write( "Server configuration file must be started with an object! Skipping...\n" );
+			return;
 		}
 		
 		
+		
+		if ( config['host'] !== undefined ) {
+			INPUT_CONF['host'] = config['host'];
+		}
+		if ( config['port'] !== undefined ) {
+			INPUT_CONF['port'] = config['port'];
+		}
+		if ( config['unix'] !== undefined ) {
+			INPUT_CONF['unix'] = path.resolve(config_dir, config['unix']);
+		}
+		if ( typeof config['document_root'] === "string" ) {
+			INPUT_CONF['document_root'] = path.resolve(config_dir, config['document_root']);
+		}
+		if ( config['ssl_check'] !== undefined ) {
+			INPUT_CONF['ssl_check'] = !!config['ssl_check'];
+		}
+		if ( config['proxy_only'] !== undefined ) {
+			INPUT_CONF['proxy_only'] = !!config['proxy_only'];
+		}
+		if ( Array.isArray(config['rules']) ) {
+			const rules = [];
+			for(const rule of config['rules']) {
+				rules.push({
+					rule,
+					base_dir:config_dir
+				});
+			}
+			INPUT_CONF['rules'] = rules;
+		}
+	}
+	async function __ON_DEFAULT_HOST_REQUESTED(req, res) {
+		let targetURL = __GET_REQUEST_PATH(req.url);
+		
+		
+		// NOTE: This only prevents conditions such as "?a=1&b=2#hash"
+		// NOTE: Theoretically, this condition will not occur
+		// NOTE: NodeJS and Browser will automatically add / in the beginning
+		if ( targetURL[0] !== "/" ) { targetURL = `/${targetURL}`; }
 		
 		// NOTE: If the path is a directory ( ended with a forward slash )
-		if ( targetURL.substr(-1) === '/' ) {
-			targetURL += 'index.html';
-		}
+		if ( targetURL.substr(-1) === '/' ) { targetURL += 'index.html'; }
+		
+		// NOTE: Resolve path to absolute path ( Purge relative paths such as .. and . )
+		// NOTE: This prevents unexpected /../a/b/c condition which will access out of document root
+		// NOTE: Theoretically, this condition will also not occur in most cases
+		// NOTE: Browsers and CURL will not allow this to happen...
+		targetURL = path.resolve(targetURL);
+		
+		// NOTE: Make the url be a full path from document root
+		targetURL = `${DOCUMENT_ROOT}${targetURL}`;
 		
 		
-		
-		// NOTE: Resolve path to absolute path
-		targetURL = path.resolve(DOCUMENT_ROOT, targetURL);
 		
 		
 		

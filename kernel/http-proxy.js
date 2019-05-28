@@ -5,14 +5,37 @@
 const http	= require( 'http' );
 const https = require( 'https' );
 
+const CSP_STRING_VALUES = [ 'self', 'unsafe-inline', 'unsafe-eval', 'none', 'strict-dynamic' ];
+const CSP_RULE_WHITELIST = [
+	"child-src",
+	"connect-src",
+	"default-src",
+	"font-src",
+	"frame-src",
+	"img-src",
+	"manifest-src",
+	"media-src",
+	"object-src",
+	"prefetch-src",
+	"script-src",
+	"style-src",
+	"webrtc-src",
+	"worker-src"
+];
+
 module.exports = async function handle_request(host, runtime, req, res) {
 	const cors  = runtime._cors[host];
+	const csp	= runtime._csp[host];
 	const proxy = runtime._proxy[host];
 	
 
 	if ( cors ) {
 		let _should_continue = await handle_proxy_cors(cors, req, res);
 		if ( !_should_continue ) return;
+	}
+	
+	if ( csp ) {
+		await handle_proxy_csp(csp, req, res);
 	}
 	
 	return handle_proxy_request(proxy, runtime.ssl_check, req, res);
@@ -22,6 +45,7 @@ async function handle_proxy_cors(cors, req, res) {
 	const CORS_INFO = Object.freeze({
 		preflight: PREFLIGHT,
 		resource: req.url_info,
+		referer: req.headers['referer']||null,
 		origin: req.headers['origin']||null,
 		method: PREFLIGHT ? (req.headers['access-control-request-method']||null) : req.method
 	});
@@ -94,6 +118,29 @@ async function handle_proxy_cors(cors, req, res) {
 	return true;
 	// endregion
 }
+async function handle_proxy_csp(csp, req, res) {
+	const csp_policies = await csp(Object.freeze({
+		resource: req.url_info,
+		referer: req.headers['referer']||null,
+		origin: req.headers['origin']||null,
+		method: req.method
+	}));
+	
+	
+	
+	const policies = [];
+	for( const policy_name of CSP_RULE_WHITELIST ) {
+		if ( !csp_policies[policy_name] ) continue;
+		
+		const policy_content = csp_policies[policy_name].map((input)=>{
+			return (CSP_STRING_VALUES.indexOf(input) >= 0 ? `'${input}'` : input);
+		});
+		policies.push(`${policy_name} ${policy_content.join( ' ' )}`);
+	}
+	
+	res._csp_headers = { 'Content-Security-Policy': policies.join('; ') };
+	// endregion
+}
 async function handle_proxy_request(proxy, ssl_check, req, res) {
 	const server_info = req.socket.server.address();
 	const headers = Object.assign(Object.create(null), req.headers);
@@ -144,10 +191,20 @@ async function handle_proxy_request(proxy, ssl_check, req, res) {
 			const source = req.socket;
 			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
 			
-			// NOTE: Set the CORS headers to proxy result
-			for( let cors_header in res._cors_headers ) {
-				if ( proxy_response.headers[cors_header] === undefined ) {
-					proxy_response.headers[cors_header] = res._cors_headers[cors_header];
+			
+			
+			const cors_headers	= res._cors_headers || {};
+			const csp_headers	= res._csp_headers  || {};
+			
+			for( let header in cors_headers ) {
+				if ( proxy_response.headers[header] === undefined ) {
+					proxy_response.headers[header] = cors_headers[header];
+				}
+			}
+			
+			for( let header in csp_headers ) {
+				if ( proxy_response.headers[header] === undefined ) {
+					proxy_response.headers[header] = csp_headers[header];
 				}
 			}
 			

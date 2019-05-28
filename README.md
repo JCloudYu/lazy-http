@@ -16,10 +16,10 @@ npm install -g lazy-http
 
 And use `lazy-http` command to instantiate a server. Following lines are the verbose output of the `lazy-http --help` command.
 ```text
-Usage: lazy-http [OPTIONS]
-OPTIONS:
-        --help Show this instruction
-    -h, --host [host] Set bind address
+Usage: lazy-http [OPTION]... [PATH]...
+OPTION:
+    -h, --help Show this instruction
+    -H, --host [host] Set bind address
     -p, --port [port] Set listen port
     -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )
     -d, --document_root [path] Set document root. Default value is current working directory!
@@ -32,7 +32,13 @@ RULE_URI:
     proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!
     proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!
     mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!
-    cors:[hostname]:[path-to-js-cors-handler] Attach a cors handler to a specific hostname!
+    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!
+    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!
+PATH:
+    This program will use the following rules to process the input paths.
+        1. If the path is pointed to a valid file, then the path will be loaded as a config
+        2. If the path is pointed to a valid directory, then the path will be used as the document root
+        3. If the path doesn't exist, then verbose error message and skipping
 ```
 
 ## Logs ##

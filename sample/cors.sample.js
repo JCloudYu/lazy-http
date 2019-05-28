@@ -9,6 +9,7 @@
 	 *			hash: @string,
 	 *			search: @string
 	 *		},
+	 *		referer: @string|null,
 	 *		origin: @string|null,
 	 *		method: @string|null
 	 *  }
@@ -23,14 +24,14 @@
 	 * 		max_age: @int
 	 *  }
 	**/
-	module.exports = function(req_info={resource:{}, origin:'', method:''}){
+	module.exports = function(req_info={resource:{}, referer:'', origin:'', method:''}){
 		return {
 			allow_origin: '*',
 			allow_methods: [ 'OPTIONS', 'POST', 'GET', 'DELETE', 'PUT', 'PATCH' ]
 		};
 	};
 	
-	return;
+//	return;
 	
 	
 	

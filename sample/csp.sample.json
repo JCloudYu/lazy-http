@@ -1,0 +1,20 @@
+{
+	"/": {
+		"default-src": [ "self", "data:", "gap:", "blob:", "unsafe-inline" ]
+	},
+	
+	"= /index.html": {
+		"default-src": [ "self", "data:", "gap:", "blob:" ],
+		"script-src": [ "self", "blob:", "unsafe-inline", "unsafe-eval", "res.purimize.com", "cdn.jsdelivr.net", "momentjs.com" ],
+		"style-src": [ "self", "unsafe-inline", "res.purimize.com", "fonts.googleapis.com" ],
+		"font-src": [ "self", "res.purimize.com", "fonts.googleapis.com", "fonts.gstatic.com" ]
+	},
+	
+	"*~ .*\/test.end$": {
+		"default-src": [ "self", "data:", "gap:", "blob:" ],
+		"script-src": [ "self", "blob:", "unsafe-inline", "unsafe-eval", "res.purimize.com", "cdn.jsdelivr.net", "momentjs.com" ],
+		"style-src": [ "self", "unsafe-inline", "res.purimize.com", "fonts.googleapis.com" ],
+		"font-src": [ "self", "res.purimize.com", "fonts.googleapis.com", "fonts.gstatic.com" ]
+	}
+}
+
