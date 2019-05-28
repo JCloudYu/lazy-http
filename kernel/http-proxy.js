@@ -119,7 +119,7 @@ async function handle_proxy_cors(cors, req, res) {
 	// endregion
 }
 async function handle_proxy_csp(csp, req, res) {
-	const csp_policies = await csp(Object.freeze({
+	const result_policies = await csp(Object.freeze({
 		resource: req.url_info,
 		referer: req.headers['referer']||null,
 		origin: req.headers['origin']||null,
@@ -130,15 +130,16 @@ async function handle_proxy_csp(csp, req, res) {
 	
 	const policies = [];
 	for( const policy_name of CSP_RULE_WHITELIST ) {
-		if ( !csp_policies[policy_name] ) continue;
+		if ( !result_policies[policy_name] ) continue;
 		
-		const policy_content = csp_policies[policy_name].map((input)=>{
+		const policy_content = result_policies[policy_name].map((input)=>{
 			return (CSP_STRING_VALUES.indexOf(input) >= 0 ? `'${input}'` : input);
 		});
 		policies.push(`${policy_name} ${policy_content.join( ' ' )}`);
 	}
 	
-	res._csp_headers = { 'Content-Security-Policy': policies.join('; ') };
+	const csp_policies = policies.join('; ');
+	res._csp_headers = csp_policies ? { 'Content-Security-Policy':csp_policies } : {};
 	// endregion
 }
 async function handle_proxy_request(proxy, ssl_check, req, res) {

@@ -135,7 +135,7 @@
 						await __LOAD_CONFIG(input_path);
 					}
 					catch(e) {
-						process.stderr.write( `Cannot load target configuration file! (${config_path}) Skipping with error (${e.message})\n` );
+						process.stderr.write( `Cannot load target configuration file! (${input_path}) Skipping with error (${e.message})\n` );
 					}
 				}
 				break;

@@ -165,7 +165,7 @@ function BuildPathMatcher(match_rule) {
 			_matcher.match_rule = rule;
 			break;
 		
-		case "*~": {
+		case "~*": {
 			const regex = new RegExp(rule);
 			_matcher.test = (path)=>{
 				const matches = path.match(regex);
