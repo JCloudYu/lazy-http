@@ -11,13 +11,14 @@
 	 *		},
 	 *		referer: @string|null,
 	 *		origin: @string|null,
-	 *		method: @string|null
+	 *		method: @string|null,
+	 *		statusCode: @int|null
 	 *  }
 	 *
 	 *  The function must return an object containing fetch-directives listed in
 	 *  https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy#Fetch_directives
 	**/
-	module.exports = function(req_info={resource:{}, referer:'', origin:'', method:''}){
+	module.exports = function(req_info={resource:{}, referer:'', origin:'', method:'', statusCode:null}){
 		return {
 			"default-src": [ 'self', 'data:', 'gap:', 'blob:' ],
 			"script-src": [ 'self', 'blob:', 'unsafe-inline', 'unsafe-eval', 'res.purimize.com', 'cdn.jsdelivr.net' ],
@@ -41,7 +42,7 @@
 		},
 		
 		// Prefix search with dynamic policy
-		"/usr": (cors_info)=>{
+		"/usr": (req_info={resource:{}, referer:'', origin:'', method:'', statusCode:null})=>{
 			return {
 				"default-src": [ 'self', 'data:', 'gap:', 'blob:' ],
 				"script-src": [ 'self', 'blob:', 'unsafe-inline', 'unsafe-eval', 'res.purimize.com', 'cdn.jsdelivr.net' ],
@@ -77,7 +78,7 @@
 		},
 		
 		// Regular expression pattern patch with dynamic policy
-		"*~ .*\/test.begin$": (cors_info)=>{
+		"*~ .*\/test.begin$": (req_info={resource:{}, referer:'', origin:'', method:'', statusCode:null})=>{
 			return {
 				"default-src": [ 'self', 'data:', 'gap:', 'blob:' ],
 				"script-src": [ 'self', 'blob:', 'unsafe-inline', 'unsafe-eval', 'res.purimize.com', 'cdn.jsdelivr.net' ],
