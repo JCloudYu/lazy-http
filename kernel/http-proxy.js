@@ -117,7 +117,7 @@ async function handle_proxy_cors(processors, req, res) {
 	return true;
 	// endregion
 }
-async function handle_proxy_csp(processors, req, res) {
+async function handle_proxy_csp(processors, req, res, proxy_response) {
 	if ( !processors.csp ) return false;
 	
 	const csp = processors.csp;
@@ -126,7 +126,7 @@ async function handle_proxy_csp(processors, req, res) {
 		referer: req.headers['referer']||null,
 		origin: req.headers['origin']||null,
 		method: req.method,
-		statusCode: res.statusCode,
+		statusCode: proxy_response.statusCode,
 	});
 	const result_policies = await csp(req_info);
 	
@@ -202,7 +202,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 			
 			
 			try {
-				await handle_proxy_csp(processors, req, proxy_response);
+				await handle_proxy_csp(processors, req, res, proxy_response);
 			} catch(e) {}
 			
 			
