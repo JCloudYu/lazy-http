@@ -39,7 +39,7 @@ module.exports = async function handle_request(host, runtime, req, res) {
 async function handle_proxy_cors(processors, req, res) {
 	if ( !processors.cors ) return true;
 	
-	const cors = processors.cors;
+	const {proxy, cors} = processors;
 	const PREFLIGHT = req.method === "OPTIONS";
 	const CORS_INFO = Object.freeze({
 		preflight: PREFLIGHT,
@@ -49,71 +49,87 @@ async function handle_proxy_cors(processors, req, res) {
 		method: PREFLIGHT ? (req.headers['access-control-request-method']||null) : req.method
 	});
 	
-	
-	
-	// region [ Obtain corresponding CORS policies ]
-	const {
-		allow_origin, allow_methods, allow_headers, allow_credentials,
-		expose_headers, max_age
-	} = await cors(CORS_INFO);
-	// endregion
-	
-	
-	
 	let _should_continue = true;
-	// region [ Check CORS according to given policies ]
-	const response_headers = Object.create(null);
-	if ( allow_origin !== undefined ) {
-		if ( allow_origin !== "*" ) {
-			_should_continue = _should_continue && ( req.headers['origin'] === allow_origin );
+	const CORS_HEADERS	= Object.create(null);
+	const CORS_RESULT	= await cors(CORS_INFO);
+	
+	
+	
+	
+	if ( CORS_RESULT === false || Object(CORS_RESULT) === CORS_RESULT ) {
+		_should_continue = false;
+	}
+	else {
+		// region [ Obtain corresponding CORS policies ]
+		const {
+			allow_origin, allow_methods, allow_headers, allow_credentials,
+			expose_headers, max_age
+		} = CORS_RESULT;
+		// endregion
+		
+		
+		
+		// region [ Check CORS according to given policies ]
+		if ( allow_origin !== undefined ) {
+			if ( allow_origin !== "*" ) {
+				_should_continue = _should_continue && ( req.headers['origin'] === allow_origin );
+			}
+			
+			CORS_HEADERS[ 'Access-Control-Allow-Origin' ] = allow_origin;
 		}
 		
-		response_headers[ 'Access-Control-Allow-Origin' ] = allow_origin;
-	}
-	
-	if ( allow_methods !== undefined && Array.isArray(allow_methods) ) {
-		_should_continue = _should_continue && ( allow_methods.indexOf(req.method) >= 0 );
+		if ( allow_methods !== undefined && Array.isArray(allow_methods) ) {
+			_should_continue = _should_continue && ( allow_methods.indexOf(req.method) >= 0 );
+			
+			if ( PREFLIGHT ) {
+				CORS_HEADERS[ 'Access-Control-Allow-Methods' ] = allow_methods.join(', ');
+			}
+		}
 		
-		if ( PREFLIGHT ) {
-			response_headers[ 'Access-Control-Allow-Methods' ] = allow_methods.join(', ');
+		if ( allow_headers !== undefined && Array.isArray(allow_headers) ) {
+			if ( PREFLIGHT ) {
+				CORS_HEADERS[ 'Access-Control-Allow-Headers' ] = allow_headers.join(', ');
+			}
 		}
-	}
-	
-	if ( allow_headers !== undefined && Array.isArray(allow_headers) ) {
-		if ( PREFLIGHT ) {
-			response_headers[ 'Access-Control-Allow-Headers' ] = allow_headers.join(', ');
+		
+		if ( allow_credentials !== undefined ) {
+			CORS_HEADERS[ 'Access-Control-Allow-Credentials' ] = allow_credentials ? 'true' : 'false';
 		}
-	}
-	
-	if ( allow_credentials !== undefined ) {
-		response_headers[ 'Access-Control-Allow-Credentials' ] = allow_credentials ? 'true' : 'false';
-	}
-	
-	if ( expose_headers !== undefined && Array.isArray(expose_headers) ) {
-		if ( PREFLIGHT ) {
-			response_headers[ 'Access-Control-Expose-Headers' ] = expose_headers.join(', ');
+		
+		if ( expose_headers !== undefined && Array.isArray(expose_headers) ) {
+			if ( PREFLIGHT ) {
+				CORS_HEADERS[ 'Access-Control-Expose-Headers' ] = expose_headers.join(', ');
+			}
 		}
-	}
-	
-	if ( max_age !== undefined && Number.isInteger(max_age) ) {
-		if ( PREFLIGHT ) {
-			response_headers[ 'Access-Control-Max-Age' ] = max_age;
+		
+		if ( max_age !== undefined && Number.isInteger(max_age) ) {
+			if ( PREFLIGHT ) {
+				CORS_HEADERS[ 'Access-Control-Max-Age' ] = max_age;
+			}
 		}
+		// endregion
 	}
-	// endregion
 	
 	
 	
 	// region [ Perform final CORS behavior ]
 	// NOTE: The final proxy not be reached if the env is in preflight mode or the cors check fails
 	if ( PREFLIGHT || !_should_continue ) {
-		res.writeHead(_should_continue ? 200 : 403, response_headers);
+		const now = (new Date()).toISOString();
+		const source = req.socket;
+		const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
+		
+		if ( !_should_continue ) {
+			process.stdout.write(`\u001b[91m[${now}] 403 ${source_info} ${proxy.rule} Access to ${req.url_info.raw} is blocked by CORS!\u001b[39m\n`);
+		}
+		
+		res.writeHead(_should_continue ? 200 : 403, CORS_HEADERS);
 		res.end();
 		return false
 	}
 	
 	
-	res._cors_headers = response_headers;
+	res._cors_headers = CORS_HEADERS;
 	return true;
 	// endregion
 }

@@ -61,6 +61,14 @@
 			}
 		},
 		
+		"/cors/block": ()=>{return false},
+		"/cors/accept": (cors_info)=>{
+			return {
+				allow_origin: cors_info.origin || '*',
+				allow_methods: [ 'OPTIONS', 'DELETE', 'GET' ]
+			}
+		},
+		
 		// Regular expression pattern patch with static policy
 		"*~ .*\/test.end$": {
 			allow_origin: 'origin',
