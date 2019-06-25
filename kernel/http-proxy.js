@@ -55,8 +55,7 @@ async function handle_proxy_cors(processors, req, res) {
 	
 	
 	
-	
-	if ( CORS_RESULT === false || Object(CORS_RESULT) === CORS_RESULT ) {
+	if ( CORS_RESULT === false || Object(CORS_RESULT) !== CORS_RESULT ) {
 		_should_continue = false;
 	}
 	else {
