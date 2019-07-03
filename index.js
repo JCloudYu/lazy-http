@@ -144,14 +144,6 @@
 	// endregion
 	
 	// region [ Process the configurations read from incoming arguments ]
-	// NOTE: Prepare incoming connection info
-	if ( INPUT_CONF.unix ) {
-		INPUT_CONF._connection.push(INPUT_CONF.unix);
-	}
-	else {
-		INPUT_CONF._connection.push(INPUT_CONF.port, INPUT_CONF.host);
-	}
-	
 	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
 	
 	
@@ -226,6 +218,7 @@
 				if ( !cors_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
 				
 				INPUT_CONF._cors[hostname] = cors_processor;
+				cors_processor.handler_path = handler_path;
 			} catch(e) {
 				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
 			}
@@ -248,6 +241,7 @@
 				if ( !csp_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
 				
 				INPUT_CONF._csp[hostname] = csp_processor;
+				csp_processor.handler_path = handler_path;
 			} catch(e) {
 				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
 			}
@@ -261,11 +255,63 @@
 	
 	
 	const DOCUMENT_ROOT = path.resolve( WORKING_DIR, INPUT_CONF.document_root||'' );
-	const EXT_MIME_MAP = Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
-	const PROXY_ONLY = INPUT_CONF._proxy_only;
+	const EXT_MIME_MAP	= Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
+	const PROXY_ONLY	= INPUT_CONF._proxy_only;
+	const BOUND_INFO	= [];
+	const HTTP_SERVER	= http.createServer();
 	
-	http.createServer((req, res)=>{
+	// NOTE: Prepare incoming connection info
+	if ( INPUT_CONF.unix ) {
+		BOUND_INFO.push(INPUT_CONF.unix);
+	}
+	else {
+		BOUND_INFO.push(INPUT_CONF.port, INPUT_CONF.host);
+	}
+	
+	BOUND_INFO.push(()=>{
+		const bind_info = HTTP_SERVER.address();
+		const info_text = typeof bind_info === "string" ? bind_info : `${bind_info.address}:${bind_info.port}`;
+		process.stdout.write( `\u001b[36mHost Server ( ${info_text} )\u001b[39m\n` );
+		if ( PROXY_ONLY ) {
+			process.stdout.write( `    \u001b[92mProxy Only\u001b[39m\n` );
+		}
+		else {
+			process.stdout.write( `    \u001b[92mFile Server\u001b[39m\n` );
+			process.stdout.write( `        \u001b[95mRoot: ${DOCUMENT_ROOT}\u001b[39m\n` );
+			
+			for( const ext in INPUT_CONF._mime ) {
+				process.stdout.write( `        \u001b[95mMIME: ${ext} => ${INPUT_CONF._mime[ext]}\u001b[39m\n` );
+			}
+		}
 		
+		const proxy_hosts = Object.keys(INPUT_CONF._proxy);
+		if ( proxy_hosts.length > 0 ) {
+			process.stdout.write( `    \u001b[92mProxy Server\u001b[39m\n` );
+			for( const host of proxy_hosts ) {
+				const proxy_info = INPUT_CONF._proxy[host];
+				
+				process.stdout.write( `        \u001b[93m[${proxy_info.src_host}]\u001b[39m\n` );
+				if ( proxy_info.scheme === "http" || proxy_info.scheme === "https" ) {
+					process.stdout.write( `            \u001b[95mDEST: ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}/\u001b[39m\n` );
+				}
+				else {
+					process.stdout.write( `            \u001b[95mDEST: ${proxy_info.scheme}://${proxy_info.dst_path}/\u001b[39m\n` );
+				}
+				
+				const csp = INPUT_CONF._csp[host];
+				if ( csp ) {
+					process.stdout.write( `            \u001b[95mCSP:  ${csp.handler_path}\u001b[39m\n` );
+				}
+				
+				const cors = INPUT_CONF._cors[host];
+				if ( cors ) {
+					process.stdout.write( `            \u001b[95mCORS: ${cors.handler_path}\u001b[39m\n` );
+				}
+			}
+		}
+	});
+	
+	HTTP_SERVER.on('request', (req, res)=>{
 		// region [ Parse hostname from host ]
 		const RAW_HOST = `${req.headers.host}`.trim();
 		const PORT_DIV = RAW_HOST.indexOf(':');
@@ -321,7 +367,8 @@
 			}
 		});
 		// endregion
-	}).listen(...INPUT_CONF._connection);
+	});
+	HTTP_SERVER.listen(...BOUND_INFO);
 	
 	
 	
