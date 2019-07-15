@@ -52,6 +52,7 @@
 				process.stderr.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
 				process.stderr.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
 				process.stderr.write( `        --config [path] Path to the server configuration file\n` );
+				process.stderr.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
 				process.stderr.write( `\nRULE_URI:\n` );
 				process.stderr.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
 				process.stderr.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
