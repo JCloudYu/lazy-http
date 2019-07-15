@@ -23,11 +23,11 @@ const CSP_RULE_WHITELIST = [
 	"worker-src"
 ];
 
-module.exports = async function handle_request(host, runtime, req, res) {
+module.exports = async function handle_request(matched_proxy_handler, host, runtime, req, res) {
 	const processors = Object.create(null);
 	processors.cors	 = runtime._cors[host]||null;
 	processors.csp	 = runtime._csp[host]||null;
-	processors.proxy = runtime._proxy[host]||null;
+	processors.proxy = matched_proxy_handler;
 	
 
 	
@@ -166,22 +166,27 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 	
 	
 	
+	let handler, request_content,
+		req_url = req.url.substring(proxy.src_path.length - 1);
+	
+	
+	
 	// NOTE: Remove original incoming host header
 	// NOTE: NodeJS will automatically check the certificate with the request host header
 	// NOTE: This will cause errors in proxy's certificate
 	headers[ 'X-Forwarded-Host' ] = headers['host'];
+	headers[ 'X-Forwarded-Path' ] = req.url;
 	delete headers[ 'host' ];
 	
 	
-	
-	let handler, request_content;
+		
 	if ( proxy.scheme === "https" ) {
 		handler = https;
 		request_content = {
 			host:proxy.dst_host,
 			port:proxy.dst_port,
 			rejectUnauthorized: ssl_check,
-			path:req.url,
+			path:req_url,
 			method:req.method,
 			headers:headers,
 		};
@@ -192,7 +197,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		request_content = {
 			host:proxy.dst_host,
 			port:proxy.dst_port,
-			path:req.url,
+			path:req_url,
 			method:req.method,
 			headers:headers
 		};
@@ -201,7 +206,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		handler = http;
 		request_content = {
 			socketPath:proxy.dst_path,
-			path:req.url,
+			path:req_url,
 			method:req.method,
 			headers:headers
 		};

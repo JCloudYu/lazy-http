@@ -12,7 +12,7 @@
 	const {ParseURLPath, GenerateMatchProcessor} = require( './kernel/helper.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
-	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+):(http|https|pipe)?:(.+)$/;
+	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
 	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
 	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp:([a-zA-Z0-9\-_.]+):(.+)$/;
@@ -160,8 +160,12 @@
 				continue;
 			}
 			
-			const proxy_conf = Object.create(null),
-				  [, hostname, dst_scheme="http", dst] = matches;
+			let proxy_conf = Object.create(null),
+				[, hostname, sub_path, dst_scheme="http", dst] = matches;
+			
+			hostname = hostname.trim();
+			sub_path = sub_path ? sub_path.trim() : '/';
+			
 			
 			if ( dst_scheme === "https" || dst_scheme === "http" ) {
 				const matches = dst.match(HOST_PORT_FORMAT);
@@ -174,6 +178,7 @@
 				Object.assign(proxy_conf, {
 					rule,
 					src_host: hostname,
+					src_path: sub_path,
 					scheme: dst_scheme,
 					dst_host: host,
 					dst_port: port
@@ -183,12 +188,14 @@
 				Object.assign(proxy_conf, {
 					rule,
 					src_host: hostname,
+					src_path: sub_path,
 					scheme: dst_scheme,
 					dst_path: path.resolve(base_dir, dst)
 				});
 			}
 			
-			INPUT_CONF._proxy[hostname] = proxy_conf;
+			INPUT_CONF._proxy[hostname] = INPUT_CONF._proxy[hostname] || Object.create(null);
+			INPUT_CONF._proxy[hostname][sub_path] = proxy_conf;
 		}
 		else if ( scheme === "mime" ) {
 			const matches = rule.match(MIME_RULE);
@@ -288,14 +295,17 @@
 		if ( proxy_hosts.length > 0 ) {
 			process.stdout.write( `    \u001b[92mProxy Server\u001b[39m\n` );
 			for( const host of proxy_hosts ) {
-				const proxy_info = INPUT_CONF._proxy[host];
+				const proxy_handlers = INPUT_CONF._proxy[host];
 				
-				process.stdout.write( `        \u001b[93m[${proxy_info.src_host}]\u001b[39m\n` );
-				if ( proxy_info.scheme === "http" || proxy_info.scheme === "https" ) {
-					process.stdout.write( `            \u001b[95mDEST: ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}/\u001b[39m\n` );
-				}
-				else {
-					process.stdout.write( `            \u001b[95mDEST: ${proxy_info.scheme}://${proxy_info.dst_path}/\u001b[39m\n` );
+				
+				process.stdout.write( `        \u001b[93m[${host}]\u001b[39m\n` );
+				for ( const proxy_info of Object.values(proxy_handlers) ) {
+					if ( proxy_info.scheme === "http" || proxy_info.scheme === "https" ) {
+						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}\u001b[39m\n` );
+					}
+					else {
+						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_path}\u001b[39m\n` );
+					}
 				}
 				
 				const csp = INPUT_CONF._csp[host];
@@ -328,12 +338,27 @@
 		
 		// region [ Do check hostname based proxy ]
 		if ( HOST && INPUT_CONF._proxy[HOST] !== undefined ) {
-			return http_proxy(HOST, INPUT_CONF, req, res)
-			.finally(()=>{
-				if ( !res.finished ) {
-					res.end();
-				}
-			});
+			const req_path = req.url_info.path;
+			const handlers = INPUT_CONF._proxy[HOST];
+			
+			
+			let handler = null;
+			for(const path in handlers ) {
+				const proxy = handlers[path];
+				if ( handler && (proxy.src_path.length < handler.length) ) continue;
+				if ( req_path.substring(0, proxy.src_path.length) !== proxy.src_path ) continue;
+				handler = proxy;
+			}
+			
+			
+			if ( handler ) {
+				return http_proxy(handler, HOST, INPUT_CONF, req, res)
+				.finally(()=>{
+					if ( !res.finished ) {
+						res.end();
+					}
+				});
+			}
 		}
 		// endregion
 		
