@@ -53,10 +53,10 @@
 				process.stderr.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
 				process.stderr.write( `        --config [path] Path to the server configuration file\n` );
 				process.stderr.write( `\nRULE_URI:\n` );
-				process.stderr.write( `    proxy:[hostname]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stderr.write( `    proxy:[hostname]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stderr.write( `    proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
-				process.stderr.write( `    proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
+				process.stderr.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stderr.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stderr.write( `    proxy:[hostname][/sub_path/]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
+				process.stderr.write( `    proxy:[hostname][/sub_path/]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
 				process.stderr.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
 				process.stderr.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
 				process.stderr.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
