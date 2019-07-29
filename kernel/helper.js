@@ -73,6 +73,31 @@ EXPORTED.GenerateMatchProcessor = function(conf) {
 	
 	return MatchProcessor.bind(match_info);
 };
+EXPORTED.Drain = function Drain(stream) {
+	const result = {
+		hash: null,
+		length: 0
+	};
+	const hash = require( 'crypto' ).createHash( 'sha1' );
+	
+
+	return new Promise((resolve, reject)=>{
+		if ( stream.complete ) {
+			result.hash = hash.digest('hex');
+			
+			resolve(result);
+			return;
+		}
+		
+		stream
+		.on('end', resolve)
+		.on('error', reject)
+		.on('data', (chunk)=>{
+			hash.update(chunk);
+			result.length += chunk.length;
+		});
+	});
+};
 module.exports = Object.freeze(EXPORTED);
 
 

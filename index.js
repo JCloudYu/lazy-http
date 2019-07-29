@@ -9,7 +9,7 @@
 	const http = require( 'http' );
 	const path = require( 'path' );
 	const fs   = require('fs');
-	const {ParseURLPath, GenerateMatchProcessor} = require( './kernel/helper.js' );
+	const {ParseURLPath, GenerateMatchProcessor, Drain} = require( './kernel/helper.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
 	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
@@ -17,6 +17,10 @@
 	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
+	const CAMEL_CASE_PATTERN = /(\w)(\w*)(\W*)/g;
+	const CAMEL_REPLACER = (match, $1, $2, $3, index, input )=>{
+		return `${$1.toUpperCase()}${$2.toLowerCase()}${$3}`;
+	};
 	
 	// region [ Process incoming arguments ]
 	const WORKING_DIR = process.cwd();
@@ -28,7 +32,9 @@
 		document_root:WORKING_DIR,
 		rules: [],
 		proxy_only:false,
+		echo_server:false,
 		
+		_echo_server: false,
 		_proxy_only: false,
 		_proxy:Object.create(null),
 		_mime:Object.create(null),
@@ -96,6 +102,10 @@
 				});
 				break;
 				
+			case "--echo":
+				INPUT_CONF.echo_server = true;
+				break;
+			
 			case "--proxy-only":
 				INPUT_CONF.proxy_only = true;
 				break;
@@ -146,6 +156,7 @@
 	
 	// region [ Process the configurations read from incoming arguments ]
 	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
+	INPUT_CONF._echo_server = !!INPUT_CONF.echo_server;
 	
 	
 	
@@ -265,6 +276,7 @@
 	const DOCUMENT_ROOT = path.resolve( WORKING_DIR, INPUT_CONF.document_root||'' );
 	const EXT_MIME_MAP	= Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
 	const PROXY_ONLY	= INPUT_CONF._proxy_only;
+	const ECHO_SERVER	= INPUT_CONF.echo_server;
 	const BOUND_INFO	= [];
 	const HTTP_SERVER	= http.createServer();
 	
@@ -282,6 +294,9 @@
 		process.stdout.write( `\u001b[36mHost Server ( ${info_text} )\u001b[39m\n` );
 		if ( PROXY_ONLY ) {
 			process.stdout.write( `    \u001b[92mProxy Only\u001b[39m\n` );
+		}
+		if ( ECHO_SERVER ) {
+			process.stdout.write( `    \u001b[92mEcho Server\u001b[39m\n` );
 		}
 		else {
 			process.stdout.write( `    \u001b[92mFile Server\u001b[39m\n` );
@@ -365,25 +380,65 @@
 		
 		
 		
+		const SERVER_INFO = req.socket.server.address();
+		
 		if ( PROXY_ONLY ) {
-			res.writeHead( 502, { "Content-Type": "text/plain" } );
-			res.end( 'Unexpected destination!' );
+			Drain(req)
+			.then(()=>{
+				res.writeHead( 502, { "Content-Type": "text/plain" } );
+				res.end( 'Unexpected destination!' );
+			})
+			.catch((e)=>{
+				res.writeHead( 500, { "Content-Type": "text/plain" } );
+				res.end( e.message );
+			});
+			return;
+		}
+		
+		
+		if ( ECHO_SERVER ) {
+			Drain(req)
+			.then((stream_profile)=>{
+				const is_unix = typeof SERVER_INFO === "string";
+				
+				const headers = {};
+				for(const header in req.headers) {
+					const norm_header = header.replace(CAMEL_CASE_PATTERN, CAMEL_REPLACER);
+					headers[norm_header] = req.headers[header];
+				}
+				
+				res.writeHead( 200, { "Content-Type": "application/json" } );
+				res.end(JSON.stringify({
+					source: is_unix ? SERVER_INFO : {
+						address:res.socket.remoteAddress,
+						port:res.socket.remotePort,
+						family:res.socket.remoteFamily
+					},
+					method: req.method,
+					headers: headers,
+					payload: stream_profile,
+					request_time: Date.now(),
+				}));
+			})
+			.catch((e)=>{
+				res.writeHead( 500, { "Content-Type": "text/plain" } );
+				res.end( e.message );
+			});
 			return;
 		}
 		
 		// region [ Act as a default file server ]
-		const server_info = req.socket.server.address();
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
+			const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
 			process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
 		})
 		.catch((e)=>{
 			const now = (new Date()).toISOString();
 			const source = req.socket;
-			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
+			const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
 			const err = (e === 403 ? 403 : ( e === 404 ? 404 : 500 ));
 			process.stderr.write(`\u001b[91m[${now}] ${err} ${source_info} ${req.url}\u001b[39m\n`);
 		})
@@ -463,7 +518,8 @@
 		// NOTE: This prevents unexpected /../a/b/c condition which will access out of document root
 		// NOTE: Theoretically, this condition will also not occur in most cases
 		// NOTE: Browsers and CURL will not allow this to happen...
-		targetURL = path.resolve(targetURL);
+		targetURL = __PURGE_RELATIVE_PATH(targetURL);
+		
 		
 		// NOTE: Make the url be a full path from document root
 		targetURL = `${DOCUMENT_ROOT}${targetURL}`;
@@ -521,5 +577,19 @@
 		}
 		
 		return input;
+	}
+	function __PURGE_RELATIVE_PATH(path) {
+		const path_comp = path.substring(1).split('/');
+		const new_path = [];
+		for( const comp of path_comp ) {
+			if ( comp === "." ) continue;
+			if ( comp === ".." ) {
+				new_path.splice(new_path.length-1, 1);
+				continue;
+			}
+			new_path.push(comp);
+		}
+		
+		return `/${new_path.join('/')}`;
 	}
 })().catch((e)=>{throw e;});
