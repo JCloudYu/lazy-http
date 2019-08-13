@@ -9,13 +9,13 @@
 	const http = require( 'http' );
 	const path = require( 'path' );
 	const fs   = require('fs');
-	const {ParseURLPath, GenerateMatchProcessor, Drain} = require( './kernel/helper.js' );
+	const {ParseURLPath, GenerateMatchProcessor, Drain, ParseContent} = require( './kernel/helper.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
-	const PROXY_RULE = /^proxy:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
-	const MIME_RULE	 = /^mime:(.+):(.+\/.+)$/;
-	const CORS_RULE	 = /^cors:([a-zA-Z0-9\-_.]+):(.+)$/;
-	const CSP_RULE	 = /^csp:([a-zA-Z0-9\-_.]+):(.+)$/;
+	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
+	const MIME_RULE	 = /^mime(:default)?:(.+):(.+\/.+)$/;
+	const CORS_RULE	 = /^cors(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
+	const CSP_RULE	 = /^csp(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
 	const CAMEL_CASE_PATTERN = /(\w)(\w*)(\W*)/g;
 	const CAMEL_REPLACER = (match, $1, $2, $3, index, input )=>{
@@ -37,6 +37,7 @@
 		_echo_server: false,
 		_proxy_only: false,
 		_proxy:Object.create(null),
+		_proxy_default:null,
 		_mime:Object.create(null),
 		_cors:Object.create(null),
 		_csp:Object.create(null),
@@ -173,7 +174,7 @@
 			}
 			
 			let proxy_conf = Object.create(null),
-				[, hostname, sub_path, dst_scheme="http", dst] = matches;
+				[, set_as_default, hostname, sub_path, dst_scheme="http", dst] = matches;
 			
 			hostname = hostname.trim();
 			sub_path = sub_path ? sub_path.trim() : '/';
@@ -208,6 +209,7 @@
 			
 			INPUT_CONF._proxy[hostname] = INPUT_CONF._proxy[hostname] || Object.create(null);
 			INPUT_CONF._proxy[hostname][sub_path] = proxy_conf;
+			INPUT_CONF._proxy_default = set_as_default ? hostname : null;
 		}
 		else if ( scheme === "mime" ) {
 			const matches = rule.match(MIME_RULE);
@@ -216,7 +218,7 @@
 				continue;
 			}
 			
-			const [, ext, mime] = matches;
+			const [,, ext, mime] = matches;
 			INPUT_CONF._mime[ext] = mime;
 		}
 		else if ( scheme === "cors" ) {
@@ -226,7 +228,7 @@
 				continue;
 			}
 			
-			const [, hostname, _handler_path] = matches;
+			const [,, hostname, _handler_path] = matches;
 			const handler_path = path.resolve(base_dir, _handler_path);
 			try {
 				let cors_processor = null;
@@ -249,7 +251,7 @@
 				continue;
 			}
 			
-			const [, hostname, _handler_path] = matches;
+			const [,, hostname, _handler_path] = matches;
 			const handler_path = path.resolve(base_dir, _handler_path);
 			try {
 				let csp_processor = null;
@@ -312,9 +314,10 @@
 			process.stdout.write( `    \u001b[92mProxy Server\u001b[39m\n` );
 			for( const host of proxy_hosts ) {
 				const proxy_handlers = INPUT_CONF._proxy[host];
+				const is_default = host === INPUT_CONF._proxy_default;
 				
 				
-				process.stdout.write( `        \u001b[93m[${host}]\u001b[39m\n` );
+				process.stdout.write( `        \u001b[93m[${is_default?'DEFAULT ' : ''}${host}]\u001b[39m\n` );
 				for ( const proxy_info of Object.values(proxy_handlers) ) {
 					if ( proxy_info.scheme === "http" || proxy_info.scheme === "https" ) {
 						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}\u001b[39m\n` );
@@ -353,9 +356,10 @@
 		
 		
 		// region [ Do check hostname based proxy ]
-		if ( HOST && INPUT_CONF._proxy[HOST] !== undefined ) {
+		const PickedProxyHandler = INPUT_CONF._proxy[HOST] || INPUT_CONF._proxy[INPUT_CONF._proxy_default];
+		if ( PickedProxyHandler ) {
 			const req_path = req.url_info.path;
-			const handlers = INPUT_CONF._proxy[HOST];
+			const handlers = PickedProxyHandler;
 			
 			
 			let handler = null;
@@ -375,20 +379,48 @@
 					}
 				});
 			}
+			else {
+				Drain(req)
+				.then(()=>{
+					const now = (new Date()).toISOString();
+					const source = req.socket;
+					const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
+					process.stderr.write(`\u001b[91m[${now}] 502 ${source_info} Host:${req.headers.host}\u001b[39m\n`);
+					
+					res.writeHead( 502, { "Content-Type": "text/plain" } );
+					res.end( 'Unregistered proxy path!' );
+				})
+				.catch((e)=>{
+					const now = (new Date()).toISOString();
+					const source = req.socket;
+					const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
+					process.stderr.write(`\u001b[91m[${now}] 500 ${source_info} Unknown error\u001b[39m\n`);
+					res.writeHead( 500, { "Content-Type": "text/plain" } );
+					res.end( e.message );
+				});
+			}
 		}
 		// endregion
 		
 		
 		
 		const SERVER_INFO = req.socket.server.address();
-		
 		if ( PROXY_ONLY ) {
 			Drain(req)
 			.then(()=>{
+				const now = (new Date()).toISOString();
+				const source = req.socket;
+				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
+				process.stderr.write(`\u001b[91m[${now}] 502 ${source_info} Host:${req.headers.host}\u001b[39m\n`);
+				
 				res.writeHead( 502, { "Content-Type": "text/plain" } );
-				res.end( 'Unexpected destination!' );
+				res.end( 'Unsupported destination!' );
 			})
 			.catch((e)=>{
+				const now = (new Date()).toISOString();
+				const source = req.socket;
+				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
+				process.stderr.write(`\u001b[91m[${now}] 500 ${source_info} Unknown error\u001b[39m\n`);
 				res.writeHead( 500, { "Content-Type": "text/plain" } );
 				res.end( e.message );
 			});
@@ -397,8 +429,8 @@
 		
 		
 		if ( ECHO_SERVER ) {
-			Drain(req)
-			.then((stream_profile)=>{
+			ParseContent(req)
+			.then((body_info)=>{
 				const is_unix = typeof SERVER_INFO === "string";
 				
 				const headers = {};
@@ -416,9 +448,15 @@
 					},
 					method: req.method,
 					headers: headers,
-					payload: stream_profile,
-					request_time: Date.now(),
+					payload: body_info,
+					timestamp: Math.floor(Date.now()/1000),
+					timestamp_milli: Date.now()
 				}));
+				
+				const now = (new Date()).toISOString();
+				const source = req.socket;
+				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
+				process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
 			})
 			.catch((e)=>{
 				res.writeHead( 500, { "Content-Type": "text/plain" } );

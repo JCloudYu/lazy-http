@@ -2,6 +2,8 @@
  *	Author: JCloudYu
  *	Create: 2019/05/20
 **/
+const query_str = require( 'querystring' );
+
 const EXPORTED = Object.create(null);
 const RULE_CHECKER = /^((=|~\*) )?(.*)+$/;
 
@@ -90,13 +92,107 @@ EXPORTED.Drain = function Drain(stream) {
 		}
 		
 		stream
-		.on('end', resolve)
+		.on('end', ()=>{
+			result.hash = hash.digest('hex');
+			resolve(result);
+		})
 		.on('error', reject)
 		.on('data', (chunk)=>{
 			hash.update(chunk);
 			result.length += chunk.length;
 		});
 	});
+};
+EXPORTED.ReadBody = function ReadBody(stream) {
+	const result = {
+		hash: null,
+		body: null
+	};
+	const hash = require( 'crypto' ).createHash( 'sha1' );
+	const chunks = [];
+	
+
+	return new Promise((resolve, reject)=>{
+		if ( stream.complete ) {
+			result.hash = hash.digest('hex');
+			result.body = Buffer.concat(chunks);
+			resolve(result);
+			return;
+		}
+		
+		stream
+		.on('end', ()=>{
+			result.hash = hash.digest('hex');
+			result.body = Buffer.concat(chunks);
+			resolve(result);
+		})
+		.on('error', reject)
+		.on('data', (chunk)=>{
+			hash.update(chunk);
+			chunks.push(chunk);
+		});
+	});
+};
+EXPORTED.ParseContent = async function ParseContent(req) {
+	const [contentType] = (req.headers['content-type']||'').split( ';' );
+	const [major] = contentType.split('/');
+	
+	
+	
+	if ( contentType === "application/json" ) {
+		const body_info = await EXPORTED.ReadBody(req);
+		
+		try {
+			body_info.body = body_info.body.toString( 'utf8' );
+		}
+		catch(e) {
+			body_info.length = body_info.body.length;
+			delete body_info.body;
+			return body_info;
+		}
+		
+		try {
+			body_info.body = JSON.parse(body_info.body);
+			return body_info;
+		}
+		catch(e) {
+			return body_info;
+		}
+	}
+	else
+	if ( contentType === "application/x-www-form-urlencoded" ) {
+		const body_info = await EXPORTED.ReadBody(req);
+		
+		try {
+			body_info.body = body_info.body.toString( 'utf8' );
+		}
+		catch(e) {
+			body_info.length = body_info.body.length;
+			delete body_info.body;
+			return body_info;
+		}
+		
+		
+		
+		body_info.body = query_str.parse(body_info.body);
+		return body_info;
+	}
+	else
+	if ( major === "text" ) {
+		const body_info = await EXPORTED.ReadBody(req);
+		try {
+			body_info.body = body_info.body.toString( 'utf8' );
+			return body_info;
+		}
+		catch(e) {
+			body_info.length = body_info.body.length;
+			delete body_info.body;
+			return body_info;
+		}
+	}
+	else {
+		return await EXPORTED.Drain(req);
+	}
 };
 module.exports = Object.freeze(EXPORTED);
 
