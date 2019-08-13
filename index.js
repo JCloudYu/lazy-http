@@ -48,31 +48,39 @@
 	while ( ARGV.length > 0 ) {
 		const option = ARGV.shift().trim();
 		switch(option) {
+			case "-v":
+			case "--version": {
+				const {version} = require( './package.json' );
+				process.stdout.write(`lazy-http@${version}\n`);
+				process.exit(0);
+				break;
+			}
+		
 			case "-h":
 			case "--help":
-				process.stderr.write( `Usage: lazy-http [OPTION]... [PATH]...\n` );
-				process.stderr.write( `OPTION:\n` );
-				process.stderr.write( `    -h, --help Show this instruction\n` );
-				process.stderr.write( `    -H, --host [host] Set bind address\n` );
-				process.stderr.write( `    -p, --port [port] Set listen port\n` );
-				process.stderr.write( `    -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )\n` );
-				process.stderr.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
-				process.stderr.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
-				process.stderr.write( `        --config [path] Path to the server configuration file\n` );
-				process.stderr.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
-				process.stderr.write( `\nRULE_URI:\n` );
-				process.stderr.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stderr.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stderr.write( `    proxy:[hostname][/sub_path/]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
-				process.stderr.write( `    proxy:[hostname][/sub_path/]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
-				process.stderr.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
-				process.stderr.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
-				process.stderr.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
-				process.stderr.write( `PATH:\n` );
-				process.stderr.write( `    This program will use the following rules to process the input paths.\n` );
-				process.stderr.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );
-				process.stderr.write( `        2. If the path is pointed to a valid directory, then the path will be used as the document root\n` );
-				process.stderr.write( `        3. If the path doesn't exist, then verbose error message and skipping\n` );
+				process.stdout.write( `Usage: lazy-http [OPTION]... [PATH]...\n` );
+				process.stdout.write( `OPTION:\n` );
+				process.stdout.write( `    -h, --help Show this instruction\n` );
+				process.stdout.write( `    -H, --host [host] Set bind address\n` );
+				process.stdout.write( `    -p, --port [port] Set listen port\n` );
+				process.stdout.write( `    -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )\n` );
+				process.stdout.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
+				process.stdout.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
+				process.stdout.write( `        --config [path] Path to the server configuration file\n` );
+				process.stdout.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
+				process.stdout.write( `\nRULE_URI:\n` );
+				process.stdout.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stdout.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
+				process.stdout.write( `    proxy:[hostname][/sub_path/]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
+				process.stdout.write( `    proxy:[hostname][/sub_path/]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
+				process.stdout.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
+				process.stdout.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
+				process.stdout.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
+				process.stdout.write( `PATH:\n` );
+				process.stdout.write( `    This program will use the following rules to process the input paths.\n` );
+				process.stdout.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );
+				process.stdout.write( `        2. If the path is pointed to a valid directory, then the path will be used as the document root\n` );
+				process.stdout.write( `        3. If the path doesn't exist, then verbose error message and skipping\n` );
 				return;
 			
 			case "-u":
