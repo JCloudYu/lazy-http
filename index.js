@@ -81,7 +81,8 @@
 				process.stdout.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );
 				process.stdout.write( `        2. If the path is pointed to a valid directory, then the path will be used as the document root\n` );
 				process.stdout.write( `        3. If the path doesn't exist, then verbose error message and skipping\n` );
-				return;
+				process.exit(0);
+				break;
 			
 			case "-u":
 			case "--unix":
@@ -305,6 +306,7 @@
 		if ( PROXY_ONLY ) {
 			process.stdout.write( `    \u001b[92mProxy Only\u001b[39m\n` );
 		}
+		else
 		if ( ECHO_SERVER ) {
 			process.stdout.write( `    \u001b[92mEcho Server\u001b[39m\n` );
 		}
