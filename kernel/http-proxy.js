@@ -174,8 +174,10 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 	// NOTE: Remove original incoming host header
 	// NOTE: NodeJS will automatically check the certificate with the request host header
 	// NOTE: This will cause errors in proxy's certificate
-	headers[ 'X-Forwarded-Host' ] = headers['host'];
+	headers[ 'X-Forwarded-Host' ] = headers['host']||'';
 	headers[ 'X-Forwarded-Path' ] = req.url;
+	headers[ 'X-Forwarded-Proto' ] = headers['x-forwarded-proto']||'http';
+	
 	delete headers[ 'host' ];
 	
 	
