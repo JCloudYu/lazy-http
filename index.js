@@ -6,10 +6,13 @@
 (async()=>{
 	"use strict";
 	
-	const http = require( 'http' );
-	const path = require( 'path' );
-	const fs   = require('fs');
+	const http  = require( 'http' );
+	const https = require( 'https' );
+	const path  = require( 'path' );
+	const fs    = require('fs');
+	
 	const {ParseURLPath, GenerateMatchProcessor, Drain, ParseContent} = require( './kernel/helper.js' );
+	const show_help  = require( './show-help.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
 	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
@@ -17,6 +20,7 @@
 	const CORS_RULE	 = /^cors(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
+	const PORT_FORMAT = /^([0-9]+)$/;
 	const CAMEL_CASE_PATTERN = /(\w)(\w*)(\W*)/g;
 	const CAMEL_REPLACER = (match, $1, $2, $3, index, input )=>{
 		return `${$1.toUpperCase()}${$2.toLowerCase()}${$3}`;
@@ -24,9 +28,14 @@
 	
 	// region [ Process incoming arguments ]
 	const WORKING_DIR = process.cwd();
+	const SCRIPT_ROOT = path.dirname(process.argv[1]);
 	const INPUT_CONF = Object.assign(Object.create(null), {
 		host:'localhost',
-		port:80,
+		port: '',
+		ssl: false,
+		ssl_cert: '',
+		ssl_key: '',
+		ssl_key_pass: '',
 		unix:null,
 		ssl_check:true,
 		document_root:WORKING_DIR,
@@ -34,7 +43,10 @@
 		proxy_only:false,
 		echo_server:false,
 		
+		_ssl: false,
+		_ssl_info: null,
 		_echo_server: false,
+		_port: null,
 		_proxy_only: false,
 		_proxy:Object.create(null),
 		_proxy_default:null,
@@ -58,29 +70,7 @@
 		
 			case "-h":
 			case "--help":
-				process.stdout.write( `Usage: lazy-http [OPTION]... [PATH]...\n` );
-				process.stdout.write( `OPTION:\n` );
-				process.stdout.write( `    -h, --help Show this instruction\n` );
-				process.stdout.write( `    -H, --host [host] Set bind address\n` );
-				process.stdout.write( `    -p, --port [port] Set listen port\n` );
-				process.stdout.write( `    -u, --unix [path] Listen to unix socket. ( Note that the -u option will suppress listening on ip & port! )\n` );
-				process.stdout.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
-				process.stdout.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
-				process.stdout.write( `        --config [path] Path to the server configuration file\n` );
-				process.stdout.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
-				process.stdout.write( `\nRULE_URI:\n` );
-				process.stdout.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stdout.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-				process.stdout.write( `    proxy:[hostname][/sub_path/]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
-				process.stdout.write( `    proxy:[hostname][/sub_path/]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
-				process.stdout.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
-				process.stdout.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
-				process.stdout.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
-				process.stdout.write( `PATH:\n` );
-				process.stdout.write( `    This program will use the following rules to process the input paths.\n` );
-				process.stdout.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );
-				process.stdout.write( `        2. If the path is pointed to a valid directory, then the path will be used as the document root\n` );
-				process.stdout.write( `        3. If the path doesn't exist, then verbose error message and skipping\n` );
+				show_help(process.stdout);
 				process.exit(0);
 				break;
 			
@@ -97,6 +87,24 @@
 			case "-p":
 			case "--port":
 				INPUT_CONF.port = ARGV.shift();
+				break;
+			
+			case "--ssl":
+				INPUT_CONF.ssl = true;
+				break;
+			
+			case "--ssl-cert":
+				INPUT_CONF.ssl = true;
+				INPUT_CONF.ssl_cert = ARGV.shift();
+				break;
+			
+			case "--ssl-key":
+				INPUT_CONF.ssl = true;
+				INPUT_CONF.ssl_key = ARGV.shift();
+				break;
+			
+			case "--ssl-key-pass":
+				INPUT_CONF.ssl_key_pass = ARGV.shift();
 				break;
 			
 			case "-d":
@@ -167,6 +175,8 @@
 	// region [ Process the configurations read from incoming arguments ]
 	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
 	INPUT_CONF._echo_server = !!INPUT_CONF.echo_server;
+	INPUT_CONF._ssl = !!INPUT_CONF.ssl;
+	INPUT_CONF._port = PORT_FORMAT.test(INPUT_CONF.port) ? INPUT_CONF.port : (INPUT_CONF._ssl?443:80);
 	
 	
 	
@@ -279,30 +289,122 @@
 	}
 	// endregion
 	
+	// region [ Process SSL information ]
+	{
+		if ( INPUT_CONF._ssl ) {
+			const cert_path	= (INPUT_CONF.ssl_cert||'').trim();
+			const key_path	= (INPUT_CONF.ssl_key||'').trim();
+			const key_pass	= (INPUT_CONF.ssl_key_pass||'').trim();
+			const ssl_info_provided=cert_path && key_path;
+			
+			INPUT_CONF._ssl_info = !ssl_info_provided ? null : {
+				cert:cert_path,
+				key:key_path,
+				key_pass:key_pass
+			};
+		}
+	}
+	// endregion
 	
 	
 	
 	
+	const DOCUMENT_ROOT = path.resolve(WORKING_DIR, INPUT_CONF.document_root||'');
+	const EXT_MIME_MAP	= Object.assign(require('./kernel/mime-map.js'), INPUT_CONF._mime);
+	const {
+		_proxy_only:PROXY_ONLY,
+		_echo_server:ECHO_SERVER,
+		_ssl:USE_SSL,
+		_ssl_info: SSL_INFO,
+		_port: HOST_PORT
+	} = INPUT_CONF;
 	
-	const DOCUMENT_ROOT = path.resolve( WORKING_DIR, INPUT_CONF.document_root||'' );
-	const EXT_MIME_MAP	= Object.assign( require('./kernel/mime-map.js'), INPUT_CONF._mime );
-	const PROXY_ONLY	= INPUT_CONF._proxy_only;
-	const ECHO_SERVER	= INPUT_CONF.echo_server;
+	
+	
 	const BOUND_INFO	= [];
-	const HTTP_SERVER	= http.createServer();
+	let HTTP_SERVER		= null;
 	
 	// NOTE: Prepare incoming connection info
 	if ( INPUT_CONF.unix ) {
 		BOUND_INFO.push(INPUT_CONF.unix);
 	}
 	else {
-		BOUND_INFO.push(INPUT_CONF.port, INPUT_CONF.host);
+		BOUND_INFO.push(HOST_PORT, INPUT_CONF.host);
 	}
+	
+	if ( !USE_SSL ) {
+		HTTP_SERVER = http.createServer();
+	}
+	else {
+		const ssl_info = {};
+		if ( !SSL_INFO ) {
+			ssl_info.cert = fs.readFileSync(`${SCRIPT_ROOT}/defaults/ssl.crt`);
+			ssl_info.key  = fs.readFileSync(`${SCRIPT_ROOT}/defaults/ssl.key`);
+		}
+		else {
+			let {cert:cert_path, key:key_path, key_pass:cert_key_pass=''} = SSL_INFO;
+			
+			
+			if ( !cert_path ) {
+				process.stderr.write(`You must provide ssl certificate corresponding to the provided ssl certificate key!`);
+				process.exit(1);
+			}
+			
+			SSL_INFO.cert = cert_path = path.resolve(WORKING_DIR, cert_path);
+			try {
+				ssl_info.cert = fs.readFileSync(cert_path);
+			}
+			catch(e) {
+				process.stderr.write(`Cannot read ssl certificate at \`${cert_path}\``);
+				process.exit(1);
+			}
+			
+			
+			
+			if ( !key_path ) {
+				process.stderr.write(`You must provide ssl certificate key corresponding to the provided ssl certificate!`);
+				process.exit(1);
+			}
+			
+			SSL_INFO.key  = key_path = path.resolve(WORKING_DIR, key_path);
+			try {
+				ssl_info.key = [{
+					pem: fs.readFileSync(key_path),
+					passphrase: cert_key_pass||undefined
+				}];
+			}
+			catch(e) {
+				process.stderr.write(`Cannot read ssl key at \`${key_path}\``);
+				process.exit(1);
+			}
+		}
+	
+		HTTP_SERVER = https.createServer(ssl_info);
+	}
+	
+	
 	
 	BOUND_INFO.push(()=>{
 		const bind_info = HTTP_SERVER.address();
 		const info_text = typeof bind_info === "string" ? bind_info : `${bind_info.address}:${bind_info.port}`;
-		process.stdout.write( `\u001b[36mHost Server ( ${info_text} )\u001b[39m\n` );
+		
+		if ( !USE_SSL ) {
+			process.stdout.write( `\u001b[36mHosting Server on ${info_text}\u001b[39m\n` );
+		}
+		else {
+			process.stdout.write( `\u001b[36mHosting SSL Server on ${info_text}\u001b[39m\n` );
+			if ( !SSL_INFO ) {
+				process.stdout.write( `    \u001b[92mBuilt-in self-signed certificate\u001b[39m\n` );
+			}
+			else {
+				process.stdout.write( `    \u001b[92mCertificate\u001b[39m\n` );
+				process.stdout.write( `        \u001b[95m${SSL_INFO.cert}\u001b[39m\n` );
+				
+				process.stdout.write( `    \u001b[92mCertificate Key\u001b[39m\n` );
+				process.stdout.write( `        \u001b[95m${SSL_INFO.key}\u001b[39m\n` );
+			}
+		}
+		
 		if ( PROXY_ONLY ) {
 			process.stdout.write( `    \u001b[92mProxy Only\u001b[39m\n` );
 		}
