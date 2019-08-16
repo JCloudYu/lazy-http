@@ -14,6 +14,8 @@ module.exports = function(stream){
 	stream.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
 	stream.write( `    -c, --config [path] Path to the server configuration file\n` );
 	stream.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
+	stream.write( `        --force-local Make the server show only local socket information in verbose log\n` );
+	stream.write( `        --invisible The server will not pass any proxy headers to remote servers\n` );
 	stream.write( `        --echo Start the server as a simple echo server that will respond with the information related to the request\n` );
 	stream.write( `        --ssl Start the server in ssl mode ( https )\n` );
 	stream.write( `        --ssl-cert Start the server in ssl mode using the provided certificate\n` );

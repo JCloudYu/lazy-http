@@ -115,11 +115,8 @@ async function handle_proxy_cors(processors, req, res) {
 	// NOTE: The final proxy not be reached if the env is in preflight mode or the cors check fails
 	if ( PREFLIGHT || !_should_continue ) {
 		const now = (new Date()).toISOString();
-		const source = req.socket;
-		const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
-		
 		if ( !_should_continue ) {
-			process.stdout.write(`\u001b[91m[${now}] 403 ${source_info} ${proxy.rule} Access to ${req.url_info.raw} is blocked by CORS!\u001b[39m\n`);
+			process.stdout.write(`\u001b[91m[${now}] 403 ${req.source_info} ${proxy.rule} Access to ${req.url_info.raw} is blocked by CORS!\u001b[39m\n`);
 		}
 		
 		res.writeHead(_should_continue ? 200 : 403, CORS_HEADERS);
@@ -161,7 +158,6 @@ async function handle_proxy_csp(processors, req, res, proxy_response) {
 }
 async function handle_proxy_request(processors, ssl_check, req, res) {
 	const proxy = processors.proxy;
-	const server_info = req.socket.server.address();
 	const headers = Object.assign(Object.create(null), req.headers);
 	
 	
@@ -171,12 +167,41 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 	
 	
 	
-	// NOTE: Remove original incoming host header
-	// NOTE: NodeJS will automatically check the certificate with the request host header
-	// NOTE: This will cause errors in proxy's certificate
-	headers[ 'X-Forwarded-Host' ] = headers['host']||'';
-	headers[ 'X-Forwarded-Path' ] = req.url;
-	headers[ 'X-Forwarded-Proto' ] = headers['x-forwarded-proto']||'http';
+	if ( !req.invisible_mode ) {
+		// NOTE: Remove original incoming host header
+		// NOTE: NodeJS will automatically check the certificate with the request host header
+		// NOTE: This will cause errors in proxy's certificate
+		headers[ 'X-Forwarded-Host' ]	= headers['host']||'';
+		headers[ 'X-Forwarded-Path' ]	= req.url;
+		headers[ 'X-Forwarded-Proto' ]	= headers['x-forwarded-proto']||'http';
+		
+		if ( req.proxy_ip ) {
+			headers[ 'X-Real-Ip' ] = req.proxy_ip;
+		}
+		else
+		if ( req.hw_remote_socket ) {
+			headers[ 'X-Real-Ip' ] = req.hw_remote_socket.address;
+		}
+		else {
+			delete headers['x-real-ip'];
+		}
+		
+		
+		
+		
+		if ( req.proxy_port ) {
+			headers[ 'X-Real-Port' ] = req.proxy_port;
+		}
+		else
+		if ( req.hw_remote_socket ) {
+			headers[ 'X-Real-Port' ] = req.hw_remote_socket.port;
+		}
+		else {
+			delete headers['x-real-port'];
+		}
+	}
+	
+	
 	
 	delete headers[ 'host' ];
 	
@@ -218,8 +243,6 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		const proxy_request = handler.request(request_content)
 		.on( 'response', async(proxy_response)=>{
 			const now = (new Date()).toISOString();
-			const source = req.socket;
-			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
 			
 			
 			
@@ -250,19 +273,17 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 			
 			
 			const color_code = (proxy_response.statusCode === 200) ? '\u001b[90m' : '\u001b[91m';
-			process.stdout.write(`${color_code}[${now}] ${proxy_response.statusCode} ${source_info} ${proxy.rule}\u001b[39m\n`);
+			process.stdout.write(`${color_code}[${now}] ${proxy_response.statusCode} ${req.source_info} ${proxy.rule}\u001b[39m\n`);
 		})
 		.on( 'error', (err)=>{
 			const now = (new Date()).toISOString();
-			const source = req.socket;
-			const source_info = (typeof server_info === "string") ? server_info : `${source.remoteAddress}:${source.remotePort}`;
-
+			
 			res.writeHead(502, {'Content-Type':'text/plain'});
 			res.end();
 			
 			
 			
-			process.stdout.write(`\u001b[91m[${now}] 502 ${source_info} ${proxy.rule} ${err.message}\u001b[39m\n`);
+			process.stdout.write(`\u001b[91m[${now}] 502 ${req.source_info} ${proxy.rule} ${err.message}\u001b[39m\n`);
 		});
 		
 		req.pipe( proxy_request );

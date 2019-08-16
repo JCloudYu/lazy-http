@@ -41,6 +41,8 @@
 		document_root:WORKING_DIR,
 		rules: [],
 		proxy_only:false,
+		invisible:false,
+		force_local:false,
 		echo_server:false,
 		
 		_ssl: false,
@@ -48,6 +50,8 @@
 		_echo_server: false,
 		_port: null,
 		_proxy_only: false,
+		_invisible: false,
+		_force_local: false,
 		_proxy:Object.create(null),
 		_proxy_default:null,
 		_mime:Object.create(null),
@@ -128,6 +132,14 @@
 				INPUT_CONF.proxy_only = true;
 				break;
 			
+			case "--invisible":
+				INPUT_CONF.invisible = true;
+				break;
+			
+			case "--force-local":
+				INPUT_CONF.force_local = true;
+				break;
+			
 			case "-c":
 			case "--config":
 			case "--conf":
@@ -173,6 +185,8 @@
 	// endregion
 	
 	// region [ Process the configurations read from incoming arguments ]
+	INPUT_CONF._invisible = !!INPUT_CONF.invisible;
+	INPUT_CONF._force_local = !!INPUT_CONF.force_local;
 	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
 	INPUT_CONF._echo_server = !!INPUT_CONF.echo_server;
 	INPUT_CONF._ssl = !!INPUT_CONF.ssl;
@@ -316,7 +330,9 @@
 		_echo_server:ECHO_SERVER,
 		_ssl:USE_SSL,
 		_ssl_info: SSL_INFO,
-		_port: HOST_PORT
+		_port: HOST_PORT,
+		_invisible: INVISIBLE_PROXY,
+		_force_local: VERBOSE_LOCAL_INFO
 	} = INPUT_CONF;
 	
 	
@@ -405,6 +421,10 @@
 			}
 		}
 		
+		if ( VERBOSE_LOCAL_INFO ) {
+			process.stdout.write( `    \u001b[92mForce Local Info Verbose Enabled\u001b[39m\n` );
+		}
+		
 		if ( PROXY_ONLY ) {
 			process.stdout.write( `    \u001b[92mProxy Only\u001b[39m\n` );
 		}
@@ -412,7 +432,8 @@
 		if ( ECHO_SERVER ) {
 			process.stdout.write( `    \u001b[92mEcho Server\u001b[39m\n` );
 		}
-		else {
+		else
+		if ( !INPUT_CONF._proxy_default ) {
 			process.stdout.write( `    \u001b[92mFile Server\u001b[39m\n` );
 			process.stdout.write( `        \u001b[95mRoot: ${DOCUMENT_ROOT}\u001b[39m\n` );
 			
@@ -423,7 +444,7 @@
 		
 		const proxy_hosts = Object.keys(INPUT_CONF._proxy);
 		if ( proxy_hosts.length > 0 ) {
-			process.stdout.write( `    \u001b[92mProxy Server\u001b[39m\n` );
+			process.stdout.write( `    \u001b[92mProxy Server${INPUT_CONF._invisible?' (Invisible Proxy)': ''}\u001b[39m\n` );
 			for( const host of proxy_hosts ) {
 				const proxy_handlers = INPUT_CONF._proxy[host];
 				const is_default = host === INPUT_CONF._proxy_default;
@@ -457,12 +478,41 @@
 		const RAW_HOST = `${req.headers.host}`.trim();
 		const PORT_DIV = RAW_HOST.indexOf(':');
 		const HOST = ( PORT_DIV < 0 ) ? RAW_HOST : RAW_HOST.substring(0, PORT_DIV).trim();
+		const INCOMING_SOCKET	= req.socket;
+		const SERVER_INFO		= INCOMING_SOCKET.server.address();
 		// endregion
 		
 		// region [ Parse requested url ]
 		let _raw_url = req.url || '';
 		if ( _raw_url[0] !== "/" ) _raw_url = `/${_raw_url}`;
 		req.url_info = ParseURLPath(_raw_url);
+		
+		
+		
+		req.invisible_mode = INVISIBLE_PROXY;
+		req.server_info = INCOMING_SOCKET.server.address();
+		req.proxy_ip	= `${req.headers['x-real-ip']||''}`.trim();
+		req.proxy_port	= `${req.headers['x-real-port']||''}`.trim();
+		req.hw_remote_socket = (typeof req.server_info === "string") ? null : {
+			family: INCOMING_SOCKET.remoteFamily,
+			address: INCOMING_SOCKET.remoteAddress,
+			port: INCOMING_SOCKET.remotePort,
+		};
+		
+		
+		
+		if ( !VERBOSE_LOCAL_INFO && req.proxy_ip !== '' ) {
+			req.source_info = req.proxy_ip + (req.proxy_port ? ':'+req.proxy_port : '');
+		}
+		
+		if ( !req.source_info || VERBOSE_LOCAL_INFO ) {
+			if ( !req.hw_remote_socket ) {
+				req.source_info = req.server_info;
+			}
+			else {
+				req.source_info = `${req.hw_remote_socket.address}:${req.hw_remote_socket.port}`;
+			}
+		}
 		// endregion
 		
 		
@@ -495,18 +545,14 @@
 				Drain(req)
 				.then(()=>{
 					const now = (new Date()).toISOString();
-					const source = req.socket;
-					const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-					process.stderr.write(`\u001b[91m[${now}] 502 ${source_info} Host:${req.headers.host}\u001b[39m\n`);
+					process.stderr.write(`\u001b[91m[${now}] 502 ${req.source_info} Host:${req.headers.host}${req.url}\u001b[39m\n`);
 					
 					res.writeHead( 502, { "Content-Type": "text/plain" } );
 					res.end( 'Unregistered proxy path!' );
 				})
 				.catch((e)=>{
 					const now = (new Date()).toISOString();
-					const source = req.socket;
-					const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-					process.stderr.write(`\u001b[91m[${now}] 500 ${source_info} Unknown error\u001b[39m\n`);
+					process.stderr.write(`\u001b[91m[${now}] 500 ${req.source_info} Unknown error\u001b[39m\n`);
 					res.writeHead( 500, { "Content-Type": "text/plain" } );
 					res.end( e.message );
 				});
@@ -516,23 +562,18 @@
 		
 		
 		
-		const SERVER_INFO = req.socket.server.address();
 		if ( PROXY_ONLY ) {
 			Drain(req)
 			.then(()=>{
 				const now = (new Date()).toISOString();
-				const source = req.socket;
-				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-				process.stderr.write(`\u001b[91m[${now}] 502 ${source_info} Host:${req.headers.host}\u001b[39m\n`);
+				process.stderr.write(`\u001b[91m[${now}] 502 ${req.source_info} Host:${req.headers.host}${req.url}\u001b[39m\n`);
 				
 				res.writeHead( 502, { "Content-Type": "text/plain" } );
-				res.end( 'Unsupported destination!' );
+				res.end( 'Unregistered host!' );
 			})
 			.catch((e)=>{
 				const now = (new Date()).toISOString();
-				const source = req.socket;
-				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-				process.stderr.write(`\u001b[91m[${now}] 500 ${source_info} Unknown error\u001b[39m\n`);
+				process.stderr.write(`\u001b[91m[${now}] 500 ${req.source_info} Unknown error\u001b[39m\n`);
 				res.writeHead( 500, { "Content-Type": "text/plain" } );
 				res.end( e.message );
 			});
@@ -566,9 +607,7 @@
 				}));
 				
 				const now = (new Date()).toISOString();
-				const source = req.socket;
-				const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-				process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
+				process.stdout.write(`\u001b[90m[${now}] 200 ${req.source_info} ${req.url}\u001b[39m\n`);
 			})
 			.catch((e)=>{
 				res.writeHead( 500, { "Content-Type": "text/plain" } );
@@ -581,16 +620,12 @@
 		__ON_DEFAULT_HOST_REQUESTED(req, res)
 		.then(()=>{
 			const now = (new Date()).toISOString();
-			const source = req.socket;
-			const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
-			process.stdout.write(`\u001b[90m[${now}] 200 ${source_info} ${req.url}\u001b[39m\n`);
+			process.stdout.write(`\u001b[90m[${now}] 200 ${req.source_info} ${req.url}\u001b[39m\n`);
 		})
 		.catch((e)=>{
 			const now = (new Date()).toISOString();
-			const source = req.socket;
-			const source_info = (typeof SERVER_INFO === "string") ? SERVER_INFO : `${source.remoteAddress}:${source.remotePort}`;
 			const err = (e === 403 ? 403 : ( e === 404 ? 404 : 500 ));
-			process.stderr.write(`\u001b[91m[${now}] ${err} ${source_info} ${req.url}\u001b[39m\n`);
+			process.stderr.write(`\u001b[91m[${now}] ${err} ${req.source_info} ${req.url}\u001b[39m\n`);
 		})
 		.finally(()=>{
 			if ( !res.finished ) {
