@@ -242,7 +242,9 @@
 			
 			INPUT_CONF._proxy[hostname] = INPUT_CONF._proxy[hostname] || Object.create(null);
 			INPUT_CONF._proxy[hostname][sub_path] = proxy_conf;
-			INPUT_CONF._proxy_default = set_as_default ? hostname : null;
+			if ( set_as_default ) {
+				INPUT_CONF._proxy_default = hostname;
+			}
 		}
 		else if ( scheme === "mime" ) {
 			const matches = rule.match(MIME_RULE);
