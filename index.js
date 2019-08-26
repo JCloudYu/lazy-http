@@ -43,23 +43,11 @@
 		proxy_only:false,
 		invisible:false,
 		force_local:false,
-		echo_server:false,
-		
-		_ssl: false,
-		_ssl_info: null,
-		_echo_server: false,
-		_port: null,
-		_proxy_only: false,
-		_invisible: false,
-		_force_local: false,
-		_proxy:Object.create(null),
-		_proxy_default:null,
-		_mime:Object.create(null),
-		_cors:Object.create(null),
-		_csp:Object.create(null),
-		_connection:[],
+		echo_server:false
 	});
 	let ARGV = process.argv.slice(2);
+	
+	
 	
 	while ( ARGV.length > 0 ) {
 		const option = ARGV.shift().trim();
@@ -71,51 +59,42 @@
 				process.exit(0);
 				break;
 			}
-		
 			case "-h":
 			case "--help":
 				show_help(process.stdout);
 				process.exit(0);
 				break;
-			
+				
 			case "-u":
 			case "--unix":
 				INPUT_CONF.unix = ARGV.shift();
 				break;
-			
 			case "-H":
 			case "--host":
 				INPUT_CONF.host = ARGV.shift();
 				break;
-			
 			case "-p":
 			case "--port":
 				INPUT_CONF.port = ARGV.shift();
 				break;
-			
 			case "--ssl":
 				INPUT_CONF.ssl = true;
 				break;
-			
 			case "--ssl-cert":
 				INPUT_CONF.ssl = true;
 				INPUT_CONF.ssl_cert = ARGV.shift();
 				break;
-			
 			case "--ssl-key":
 				INPUT_CONF.ssl = true;
 				INPUT_CONF.ssl_key = ARGV.shift();
 				break;
-			
 			case "--ssl-key-pass":
 				INPUT_CONF.ssl_key_pass = ARGV.shift();
 				break;
-			
 			case "-d":
 			case "--document-root":
 				INPUT_CONF.document_root = ARGV.shift();
 				break;
-				
 			case "-r":
 			case "--rule":
 				INPUT_CONF.rules.push({
@@ -123,23 +102,18 @@
 					base_dir: WORKING_DIR
 				});
 				break;
-				
 			case "--echo":
 				INPUT_CONF.echo_server = true;
 				break;
-			
 			case "--proxy-only":
 				INPUT_CONF.proxy_only = true;
 				break;
-			
 			case "--invisible":
 				INPUT_CONF.invisible = true;
 				break;
-			
 			case "--force-local":
 				INPUT_CONF.force_local = true;
 				break;
-			
 			case "-c":
 			case "--config":
 			case "--conf":
@@ -160,24 +134,21 @@
 				let file_state;
 				try {
 					file_state = fs.statSync(input_path);
+					
+					if ( file_state.isDirectory() ) {
+						INPUT_CONF.document_root = input_path;
+					}
+					else {
+						try {
+							await __LOAD_CONFIG(input_path);
+						}
+						catch(e) {
+							process.stderr.write( `Cannot load target configuration file! (${input_path}) Skipping with error (${e.message})\n` );
+						}
+					}
 				}
 				catch(e) {
 					process.stderr.write( `Given path is invalid! (${input_path}) Skipping...\n` );
-				}
-				
-				
-				
-				// NOTE: Do the corresponding behaviors
-				if ( file_state.isDirectory() ) {
-					INPUT_CONF.document_root = input_path;
-				}
-				else {
-					try {
-						await __LOAD_CONFIG(input_path);
-					}
-					catch(e) {
-						process.stderr.write( `Cannot load target configuration file! (${input_path}) Skipping with error (${e.message})\n` );
-					}
 				}
 				break;
 		}
@@ -185,12 +156,28 @@
 	// endregion
 	
 	// region [ Process the configurations read from incoming arguments ]
-	INPUT_CONF._invisible = !!INPUT_CONF.invisible;
-	INPUT_CONF._force_local = !!INPUT_CONF.force_local;
-	INPUT_CONF._proxy_only = !!INPUT_CONF.proxy_only;
-	INPUT_CONF._echo_server = !!INPUT_CONF.echo_server;
-	INPUT_CONF._ssl = !!INPUT_CONF.ssl;
-	INPUT_CONF._port = PORT_FORMAT.test(INPUT_CONF.port) ? INPUT_CONF.port : (INPUT_CONF._ssl?443:80);
+	const SANITIZED_CONF = {
+		_ssl: false,
+		_ssl_info: null,
+		_echo_server: false,
+		_port: null,
+		_proxy_only: false,
+		_invisible: false,
+		_force_local: false,
+		_proxy:Object.create(null),
+		_proxy_default:null,
+		_mime:Object.create(null),
+		_cors:Object.create(null),
+		_csp:Object.create(null),
+		_connection:[],
+	};
+	SANITIZED_CONF._invisible = !!INPUT_CONF.invisible;
+	SANITIZED_CONF._force_local = !!INPUT_CONF.force_local;
+	SANITIZED_CONF._proxy_only = !!INPUT_CONF.proxy_only;
+	SANITIZED_CONF._ssl_check = !!INPUT_CONF.ssl_check;
+	SANITIZED_CONF._echo_server = !!INPUT_CONF.echo_server;
+	SANITIZED_CONF._ssl = !!INPUT_CONF.ssl;
+	SANITIZED_CONF._port = PORT_FORMAT.test(INPUT_CONF.port) ? INPUT_CONF.port : (SANITIZED_CONF._ssl?443:80);
 	
 	
 	
@@ -240,10 +227,10 @@
 				});
 			}
 			
-			INPUT_CONF._proxy[hostname] = INPUT_CONF._proxy[hostname] || Object.create(null);
-			INPUT_CONF._proxy[hostname][sub_path] = proxy_conf;
+			SANITIZED_CONF._proxy[hostname] = SANITIZED_CONF._proxy[hostname] || Object.create(null);
+			SANITIZED_CONF._proxy[hostname][sub_path] = proxy_conf;
 			if ( set_as_default ) {
-				INPUT_CONF._proxy_default = hostname;
+				SANITIZED_CONF._proxy_default = hostname;
 			}
 		}
 		else if ( scheme === "mime" ) {
@@ -254,7 +241,7 @@
 			}
 			
 			const [,, ext, mime] = matches;
-			INPUT_CONF._mime[ext] = mime;
+			SANITIZED_CONF._mime[ext] = mime;
 		}
 		else if ( scheme === "cors" ) {
 			const matches = rule.match(CORS_RULE);
@@ -273,7 +260,7 @@
 				
 				if ( !cors_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
 				
-				INPUT_CONF._cors[hostname] = cors_processor;
+				SANITIZED_CONF._cors[hostname] = cors_processor;
 				cors_processor.handler_path = handler_path;
 			} catch(e) {
 				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
@@ -296,7 +283,7 @@
 				
 				if ( !csp_processor ) { throw new Error( "Target rule's handler contains invalid info!" ); }
 				
-				INPUT_CONF._csp[hostname] = csp_processor;
+				SANITIZED_CONF._csp[hostname] = csp_processor;
 				csp_processor.handler_path = handler_path;
 			} catch(e) {
 				process.stderr.write( `Cannot process target rule! (${rule}) Skipping with error: (${e.message})\n` );
@@ -307,13 +294,13 @@
 	
 	// region [ Process SSL information ]
 	{
-		if ( INPUT_CONF._ssl ) {
+		if ( SANITIZED_CONF._ssl ) {
 			const cert_path	= (INPUT_CONF.ssl_cert||'').trim();
 			const key_path	= (INPUT_CONF.ssl_key||'').trim();
 			const key_pass	= (INPUT_CONF.ssl_key_pass||'').trim();
 			const ssl_info_provided=cert_path && key_path;
 			
-			INPUT_CONF._ssl_info = !ssl_info_provided ? null : {
+			SANITIZED_CONF._ssl_info = !ssl_info_provided ? null : {
 				cert:cert_path,
 				key:key_path,
 				key_pass:key_pass
@@ -326,7 +313,8 @@
 	
 	
 	const DOCUMENT_ROOT = path.resolve(WORKING_DIR, INPUT_CONF.document_root||'');
-	const EXT_MIME_MAP	= Object.assign(require('./kernel/mime-map.js'), INPUT_CONF._mime);
+	const EXT_MIME_MAP	= Object.assign(require('./kernel/mime-map.js'), SANITIZED_CONF._mime);
+	const RUNTIME_CONF	= Object.assign({}, INPUT_CONF, SANITIZED_CONF);
 	const {
 		_proxy_only:PROXY_ONLY,
 		_echo_server:ECHO_SERVER,
@@ -335,7 +323,7 @@
 		_port: HOST_PORT,
 		_invisible: INVISIBLE_PROXY,
 		_force_local: VERBOSE_LOCAL_INFO
-	} = INPUT_CONF;
+	} = RUNTIME_CONF;
 	
 	
 	
@@ -435,21 +423,21 @@
 			process.stdout.write( `    \u001b[92mEcho Server\u001b[39m\n` );
 		}
 		else
-		if ( !INPUT_CONF._proxy_default ) {
+		if ( !RUNTIME_CONF._proxy_default ) {
 			process.stdout.write( `    \u001b[92mFile Server\u001b[39m\n` );
 			process.stdout.write( `        \u001b[95mRoot: ${DOCUMENT_ROOT}\u001b[39m\n` );
 			
-			for( const ext in INPUT_CONF._mime ) {
-				process.stdout.write( `        \u001b[95mMIME: ${ext} => ${INPUT_CONF._mime[ext]}\u001b[39m\n` );
+			for( const ext in RUNTIME_CONF._mime ) {
+				process.stdout.write( `        \u001b[95mMIME: ${ext} => ${RUNTIME_CONF._mime[ext]}\u001b[39m\n` );
 			}
 		}
 		
-		const proxy_hosts = Object.keys(INPUT_CONF._proxy);
+		const proxy_hosts = Object.keys(RUNTIME_CONF._proxy);
 		if ( proxy_hosts.length > 0 ) {
-			process.stdout.write( `    \u001b[92mProxy Server${INPUT_CONF._invisible?' (Invisible Proxy)': ''}\u001b[39m\n` );
+			process.stdout.write( `    \u001b[92mProxy Server${RUNTIME_CONF._invisible?' (Invisible Proxy)': ''}\u001b[39m\n` );
 			for( const host of proxy_hosts ) {
-				const proxy_handlers = INPUT_CONF._proxy[host];
-				const is_default = host === INPUT_CONF._proxy_default;
+				const proxy_handlers = RUNTIME_CONF._proxy[host];
+				const is_default = host === RUNTIME_CONF._proxy_default;
 				
 				
 				process.stdout.write( `        \u001b[93m[${is_default?'DEFAULT ' : ''}${host}]\u001b[39m\n` );
@@ -462,12 +450,12 @@
 					}
 				}
 				
-				const csp = INPUT_CONF._csp[host];
+				const csp = RUNTIME_CONF._csp[host];
 				if ( csp ) {
 					process.stdout.write( `            \u001b[95mCSP:  ${csp.handler_path}\u001b[39m\n` );
 				}
 				
-				const cors = INPUT_CONF._cors[host];
+				const cors = RUNTIME_CONF._cors[host];
 				if ( cors ) {
 					process.stdout.write( `            \u001b[95mCORS: ${cors.handler_path}\u001b[39m\n` );
 				}
@@ -520,7 +508,7 @@
 		
 		
 		// region [ Do check hostname based proxy ]
-		const PickedProxyHandler = INPUT_CONF._proxy[HOST] || INPUT_CONF._proxy[INPUT_CONF._proxy_default];
+		const PickedProxyHandler = RUNTIME_CONF._proxy[HOST] || RUNTIME_CONF._proxy[RUNTIME_CONF._proxy_default];
 		if ( PickedProxyHandler ) {
 			const req_path = req.url_info.path;
 			const handlers = PickedProxyHandler;
@@ -536,7 +524,7 @@
 			
 			
 			if ( handler ) {
-				return http_proxy(handler, HOST, INPUT_CONF, req, res)
+				return http_proxy(handler, HOST, RUNTIME_CONF, req, res)
 				.finally(()=>{
 					if ( !res.finished ) {
 						res.end();
@@ -659,35 +647,31 @@
 		}
 		
 		
+		const {host, port, unix, document_root:doc_root, rules:input_rules, ...input_conf} = config;
+		if ( host !== undefined ) {
+			INPUT_CONF['host'] = '' + host;
+		}
+		if ( port !== undefined && /^\d+$/.test(port) ) {
+			INPUT_CONF['port'] = parseInt(port);
+		}
+		if ( unix !== undefined ) {
+			INPUT_CONF['unix'] = path.resolve(config_dir, unix);
+		}
+		if ( typeof doc_root === "string" ) {
+			INPUT_CONF['document_root'] = path.resolve(config_dir, doc_root);
+		}
 		
-		if ( config['host'] !== undefined ) {
-			INPUT_CONF['host'] = config['host'];
-		}
-		if ( config['port'] !== undefined ) {
-			INPUT_CONF['port'] = config['port'];
-		}
-		if ( config['unix'] !== undefined ) {
-			INPUT_CONF['unix'] = path.resolve(config_dir, config['unix']);
-		}
-		if ( typeof config['document_root'] === "string" ) {
-			INPUT_CONF['document_root'] = path.resolve(config_dir, config['document_root']);
-		}
-		if ( config['ssl_check'] !== undefined ) {
-			INPUT_CONF['ssl_check'] = !!config['ssl_check'];
-		}
-		if ( config['proxy_only'] !== undefined ) {
-			INPUT_CONF['proxy_only'] = !!config['proxy_only'];
-		}
-		if ( Array.isArray(config['rules']) ) {
+		if ( Array.isArray(input_rules) ) {
 			const rules = [];
-			for(const rule of config['rules']) {
-				rules.push({
-					rule,
-					base_dir:config_dir
-				});
+			for(const rule of input_rules) {
+				rules.push({ rule, base_dir:config_dir });
 			}
 			INPUT_CONF['rules'] = rules;
 		}
+		
+		
+		
+		Object.assign(INPUT_CONF, input_conf);
 	}
 	async function __ON_DEFAULT_HOST_REQUESTED(req, res) {
 		let targetURL = __GET_REQUEST_PATH(req.url);
