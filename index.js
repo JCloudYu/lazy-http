@@ -81,11 +81,9 @@
 				INPUT_CONF.ssl = true;
 				break;
 			case "--ssl-cert":
-				INPUT_CONF.ssl = true;
 				INPUT_CONF.ssl_cert = ARGV.shift();
 				break;
 			case "--ssl-key":
-				INPUT_CONF.ssl = true;
 				INPUT_CONF.ssl_key = ARGV.shift();
 				break;
 			case "--ssl-key-pass":
@@ -176,7 +174,7 @@
 	SANITIZED_CONF._proxy_only = !!INPUT_CONF.proxy_only;
 	SANITIZED_CONF._ssl_check = !!INPUT_CONF.ssl_check;
 	SANITIZED_CONF._echo_server = !!INPUT_CONF.echo_server;
-	SANITIZED_CONF._ssl = !!INPUT_CONF.ssl;
+	SANITIZED_CONF._ssl = !!INPUT_CONF.ssl || INPUT_CONF.ssl_cert || INPUT_CONF.ssl_key;
 	SANITIZED_CONF._port = PORT_FORMAT.test(INPUT_CONF.port) ? INPUT_CONF.port : (SANITIZED_CONF._ssl?443:80);
 	
 	
@@ -647,7 +645,14 @@
 		}
 		
 		
-		const {host, port, unix, document_root:doc_root, rules:input_rules, ...input_conf} = config;
+		const {
+			host, port, unix,
+			document_root:doc_root,
+			rules:input_rules,
+			ssl_cert, ssl_key,
+			...input_conf
+		} = config;
+		
 		if ( host !== undefined ) {
 			INPUT_CONF['host'] = '' + host;
 		}
@@ -659,6 +664,12 @@
 		}
 		if ( typeof doc_root === "string" ) {
 			INPUT_CONF['document_root'] = path.resolve(config_dir, doc_root);
+		}
+		if ( ssl_cert !== undefined ) {
+			INPUT_CONF.ssl_cert = path.resolve(config_dir, ssl_cert);
+		}
+		if ( ssl_key !== undefined ) {
+			INPUT_CONF.ssl_key = path.resolve(config_dir, ssl_key);
 		}
 		
 		if ( Array.isArray(input_rules) ) {
