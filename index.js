@@ -28,7 +28,7 @@
 	
 	// region [ Process incoming arguments ]
 	const WORKING_DIR = process.cwd();
-	const SCRIPT_ROOT = path.dirname(process.argv[1]);
+	const SCRIPT_ROOT = path.dirname(fs.realpathSync(process.argv[1]));
 	const INPUT_CONF = Object.assign(Object.create(null), {
 		host:'localhost',
 		port: '',
