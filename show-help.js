@@ -13,6 +13,7 @@ module.exports = function(stream){
 	stream.write( `    -d, --document_root [path] Set document root. Default value is current working directory!\n` );
 	stream.write( `    -r, --rule [RULE_URI] Add and apply the rule uri!\n` );
 	stream.write( `    -c, --config [path] Path to the server configuration file\n` );
+	stream.write( `        --no-ssl-check The proxy server will not check the validity of remote server's ssl certificate\n` );
 	stream.write( `        --proxy-only To start the proxy server without the basic static file serving mechanism\n` );
 	stream.write( `        --force-local Make the server show only local socket information in verbose log\n` );
 	stream.write( `        --invisible The server will not pass any proxy headers to remote servers\n` );

@@ -106,6 +106,9 @@
 			case "--proxy-only":
 				INPUT_CONF.proxy_only = true;
 				break;
+			case "--no-ssl-check":
+				INPUT_CONF.ssl_check = false;
+				break;
 			case "--invisible":
 				INPUT_CONF.invisible = true;
 				break;
