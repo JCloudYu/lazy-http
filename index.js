@@ -688,7 +688,8 @@
 		Object.assign(INPUT_CONF, input_conf);
 	}
 	async function __ON_DEFAULT_HOST_REQUESTED(req, res) {
-		let targetURL = __GET_REQUEST_PATH(req.url);
+		let targetURL = decodeURIComponent(__GET_REQUEST_PATH(req.url));
+		
 		
 		
 		// NOTE: This only prevents conditions such as "?a=1&b=2#hash"
