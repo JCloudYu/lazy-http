@@ -525,29 +525,37 @@
 			
 			
 			if ( handler ) {
-				return http_proxy(handler, HOST, RUNTIME_CONF, req, res)
+				http_proxy(handler, HOST, RUNTIME_CONF, req, res)
+				.catch((e)=>{
+					console.log(req.url);
+					const now = (new Date()).toISOString();
+					process.stderr.write(`\u001b[91m[${now}] 502 ${req.source_info} Host:${req.headers.host}${req.url}\u001b[39m\n`);
+					res.writeHead( 502, { "Content-Type": "text/plain" } );
+				})
 				.finally(()=>{
 					if ( !res.finished ) {
 						res.end();
 					}
 				});
+				return;
 			}
-			else {
-				Drain(req)
-				.then(()=>{
-					const now = (new Date()).toISOString();
-					process.stderr.write(`\u001b[91m[${now}] 502 ${req.source_info} Host:${req.headers.host}${req.url}\u001b[39m\n`);
-					
-					res.writeHead( 502, { "Content-Type": "text/plain" } );
-					res.end( 'Unregistered proxy path!' );
-				})
-				.catch((e)=>{
-					const now = (new Date()).toISOString();
-					process.stderr.write(`\u001b[91m[${now}] 500 ${req.source_info} Unknown error\u001b[39m\n`);
-					res.writeHead( 500, { "Content-Type": "text/plain" } );
-					res.end( e.message );
-				});
-			}
+			
+			
+			
+			Drain(req)
+			.then(()=>{
+				const now = (new Date()).toISOString();
+				process.stderr.write(`\u001b[91m[${now}] 502 ${req.source_info} Host:${req.headers.host}${req.url}\u001b[39m\n`);
+				
+				res.writeHead( 502, { "Content-Type": "text/plain" } );
+				res.end( 'Unregistered proxy path!' );
+			})
+			.catch((e)=>{
+				const now = (new Date()).toISOString();
+				process.stderr.write(`\u001b[91m[${now}] 500 ${req.source_info} Unknown error\u001b[39m\n`);
+				res.writeHead( 500, { "Content-Type": "text/plain" } );
+				res.end( e.message );
+			});
 		}
 		// endregion
 		

@@ -5,6 +5,9 @@
 const http	= require( 'http' );
 const https = require( 'https' );
 
+
+
+const {Drain} = require( '../kernel/helper.js' );
 const CSP_STRING_VALUES = [ 'self', 'unsafe-inline', 'unsafe-eval', 'none', 'strict-dynamic' ];
 const CSP_RULE_WHITELIST = [
 	"child-src",
@@ -267,8 +270,24 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 				}
 			}
 			
-			res.writeHead(proxy_response.statusCode, proxy_response.headers);
-			proxy_response.pipe(res);
+			
+			
+			await (new Promise((resolve, reject)=>{
+				res.writeHead(proxy_response.statusCode, proxy_response.headers);
+				
+				proxy_response.pipe(res);
+				proxy_response.on('end', resolve);
+				proxy_response.on('error', (e)=>reject({source:'req', error:e}));
+				res.on('error', (e)=>reject({source:'res', error:e}));
+			}))
+			.catch((e)=>{
+				proxy_response.pause();
+				
+				return Drain(proxy_response)
+				.then(()=>{
+					return Promise.reject(e)
+				});
+			});
 			
 			
 			
@@ -277,7 +296,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		})
 		.on( 'error', (err)=>{
 			const now = (new Date()).toISOString();
-			
+			console.log("298", err);
 			res.writeHead(502, {'Content-Type':'text/plain'});
 			res.end();
 			
