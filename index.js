@@ -15,7 +15,7 @@
 	const show_help  = require( './show-help.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
-	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+)?:(http|https)?:([a-zA-Z0-9\-_.]+):([0-9]+)(:\/[^ ]+)?$/;
+	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/[^ ]*)?:(http|https)?:([a-zA-Z0-9\-_.]+):([1-9][0-9]{0,5})(\/[^ ]*)?$/;
 	const MIME_RULE	 = /^mime(:default)?:(.+):(.+\/.+)$/;
 	const CORS_RULE	 = /^cors(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
@@ -198,7 +198,7 @@
 			
 			hostname = hostname.trim();
 			sub_path = sub_path ? sub_path.trim() : '/';
-			dst_path = dst_path ? dst_path.trim().substring(1) : '/';
+			dst_path = dst_path ? dst_path.trim() : '/';
 			
 			Object.assign(proxy_conf, {
 				rule,

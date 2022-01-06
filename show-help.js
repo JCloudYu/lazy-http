@@ -23,7 +23,7 @@ module.exports = function(stream){
 	stream.write( `        --ssl-key Start the server in ssl mode using the provided certificate key\n` );
 	stream.write( `        --ssl-key-pass Start the server in ssl mode using the provided certificate key and corresponding passphrase\n` );
 	stream.write( `\nRULE_URI:\n` );
-	stream.write( `    proxy:{hostname}{/proxy_path}:[http,https]:{dst_host}:{dst_port}[:/dst_path] Proxy request for hostname to remote http/https server!\n` );
+	stream.write( `    proxy:{hostname}{/proxy_path}:[http,https]:{dst_host}:{dst_port}[/dst_path] Proxy request for hostname to remote http/https server!\n` );
 	stream.write( `    mime:{extension}:{mime-type} Add a relation between specified extension and mime-type!\n` );
 	stream.write( `    cors:{hostname}:{path-to-cors-handler} Attach a cors handler to a specific hostname!\n` );
 	stream.write( `    csp:{hostname}:{path-to-csp-handler} Attach a csp handler to a specific hostname!\n` );
