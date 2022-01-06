@@ -167,9 +167,8 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 	
 	let 
 	handler, request_content,
-	req_url = proxy.src_path + req.url.substring(proxy.src_path.length);
-
-	if ( req_url[0] !== "/" ) req_url = '/' + req_url;
+	req_path = proxy.dst_path + req.url.substring(proxy.src_path.length);
+	if ( req_path[0] !== "/" ) req_path = '/' + req_path;
 
 	
 	
@@ -219,7 +218,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 			host:proxy.dst_host,
 			port:proxy.dst_port,
 			rejectUnauthorized: ssl_check,
-			path:req_url,
+			path:req_path,
 			method:req.method,
 			headers:headers,
 		};
@@ -230,7 +229,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		request_content = {
 			host:proxy.dst_host,
 			port:proxy.dst_port,
-			path:req_url,
+			path:req_path,
 			method:req.method,
 			headers:headers
 		};
@@ -239,7 +238,7 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 		handler = http;
 		request_content = {
 			socketPath:proxy.dst_path,
-			path:req_url,
+			path:req_path,
 			method:req.method,
 			headers:headers
 		};
