@@ -165,9 +165,12 @@ async function handle_proxy_request(processors, ssl_check, req, res) {
 	
 	
 	
-	let handler, request_content,
-		req_url = req.url.substring(proxy.src_path.length - 1);
-	
+	let 
+	handler, request_content,
+	req_url = proxy.src_path + req.url.substring(proxy.src_path.length);
+
+	if ( req_url[0] !== "/" ) req_url = '/' + req_url;
+
 	
 	
 	if ( !req.invisible_mode ) {

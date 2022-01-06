@@ -23,13 +23,10 @@ module.exports = function(stream){
 	stream.write( `        --ssl-key Start the server in ssl mode using the provided certificate key\n` );
 	stream.write( `        --ssl-key-pass Start the server in ssl mode using the provided certificate key and corresponding passphrase\n` );
 	stream.write( `\nRULE_URI:\n` );
-	stream.write( `    proxy:[hostname][/sub_path/]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-	stream.write( `    proxy:[hostname][/sub_path/]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!\n` );
-	stream.write( `    proxy:[hostname][/sub_path/]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!\n` );
-	stream.write( `    proxy:[hostname][/sub_path/]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!\n` );
-	stream.write( `    mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!\n` );
-	stream.write( `    cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!\n` );
-	stream.write( `    csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!\n` );
+	stream.write( `    proxy:{hostname}{/proxy_path}:[http,https]:{dst_host}:{dst_port}[:/dst_path] Proxy request for hostname to remote http/https server!\n` );
+	stream.write( `    mime:{extension}:{mime-type} Add a relation between specified extension and mime-type!\n` );
+	stream.write( `    cors:{hostname}:{path-to-cors-handler} Attach a cors handler to a specific hostname!\n` );
+	stream.write( `    csp:{hostname}:{path-to-csp-handler} Attach a csp handler to a specific hostname!\n` );
 	stream.write( `PATH:\n` );
 	stream.write( `    This program will use the following rules to process the input paths.\n` );
 	stream.write( `        1. If the path is pointed to a valid file, then the path will be loaded as a config\n` );

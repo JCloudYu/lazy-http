@@ -15,7 +15,7 @@
 	const show_help  = require( './show-help.js' );
 	const http_proxy = require( './kernel/http-proxy.js' );
 	
-	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+\/)?:(http|https|pipe)?:(.+)$/;
+	const PROXY_RULE = /^proxy(:default)?:([a-zA-Z0-9\-_.]+)(\/|\/[^ ]+)?:(http|https)?:([a-zA-Z0-9\-_.]+):([0-9]+)(:\/[^ ]+)?$/;
 	const MIME_RULE	 = /^mime(:default)?:(.+):(.+\/.+)$/;
 	const CORS_RULE	 = /^cors(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
@@ -195,38 +195,21 @@
 			}
 			
 			let proxy_conf = Object.create(null),
-				[, set_as_default, hostname, sub_path, dst_scheme="http", dst] = matches;
+				[, set_as_default, hostname, sub_path, dst_scheme="http", host, port, dst_path] = matches;
 			
 			hostname = hostname.trim();
 			sub_path = sub_path ? sub_path.trim() : '/';
+			dst_path = dst_path ? dst_path.trim().substring(1) : '/';
 			
-			
-			if ( dst_scheme === "https" || dst_scheme === "http" ) {
-				const matches = dst.match(HOST_PORT_FORMAT);
-				if ( !matches ) {
-					process.stderr.write( `Invalid hostname and port detected! Skipping... (${rule})` );
-					continue;
-				}
-				
-				const [, host, port] = matches;
-				Object.assign(proxy_conf, {
-					rule,
-					src_host: hostname,
-					src_path: sub_path,
-					scheme: dst_scheme,
-					dst_host: host,
-					dst_port: port
-				});
-			}
-			else {
-				Object.assign(proxy_conf, {
-					rule,
-					src_host: hostname,
-					src_path: sub_path,
-					scheme: dst_scheme,
-					dst_path: path.resolve(base_dir, dst)
-				});
-			}
+			Object.assign(proxy_conf, {
+				rule,
+				src_host: hostname,
+				src_path: sub_path,
+				scheme: dst_scheme,
+				dst_host: host,
+				dst_port: port,
+				dst_path: dst_path
+			});
 			
 			SANITIZED_CONF._proxy[hostname] = SANITIZED_CONF._proxy[hostname] || Object.create(null);
 			SANITIZED_CONF._proxy[hostname][sub_path] = proxy_conf;
@@ -443,12 +426,7 @@
 				
 				process.stdout.write( `        \u001b[93m[${is_default?'DEFAULT ' : ''}${host}]\u001b[39m\n` );
 				for ( const proxy_info of Object.values(proxy_handlers) ) {
-					if ( proxy_info.scheme === "http" || proxy_info.scheme === "https" ) {
-						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}\u001b[39m\n` );
-					}
-					else {
-						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_path}\u001b[39m\n` );
-					}
+						process.stdout.write( `            \u001b[95mDEST: ${proxy_info.src_path} => ${proxy_info.scheme}://${proxy_info.dst_host}:${proxy_info.dst_port}${proxy_info.dst_path}\u001b[39m\n` );
 				}
 				
 				const csp = RUNTIME_CONF._csp[host];
