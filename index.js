@@ -19,7 +19,6 @@
 	const MIME_RULE	 = /^mime(:default)?:(.+):(.+\/.+)$/;
 	const CORS_RULE	 = /^cors(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
 	const CSP_RULE	 = /^csp(:default)?:([a-zA-Z0-9\-_.]+):(.+)$/;
-	const HOST_PORT_FORMAT = /^([a-zA-Z0-9\-_.]+):([0-9]+)$/;
 	const PORT_FORMAT = /^([0-9]+)$/;
 	const CAMEL_CASE_PATTERN = /(\w)(\w*)(\W*)/g;
 	const CAMEL_REPLACER = (match, $1, $2, $3, index, input )=>{
