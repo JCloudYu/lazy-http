@@ -27,10 +27,11 @@ OPTION:
         --config [path] Path to the server configuration file
 
 RULE_URI:
-    proxy:[hostname]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!
-    proxy:[hostname]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!
-    proxy:[hostname]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!
-    proxy:[hostname]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!
+    redir:[default:][hostname][/path_prefix]:[redirected-url] Proxy request for hostname to remote http server!
+    proxy:[default:][hostname][/path_prefix]::[dst-host]:[dst-port] Proxy request for hostname to remote http server!
+    proxy:[default:][hostname][/path_prefix]:http:[dst-host]:[dst-port] Proxy request for hostname to remote http server!
+    proxy:[default:][hostname][/path_prefix]:https:[dst-host]:[dst-port] Proxy request for hostname to remote https server!
+    proxy:[default:][hostname][/path_prefix]:unix:[dst-host]:[dst-port] Proxy request for hostname to local named pipe server!
     mime:[extension]:[mime-type] Add a relation between specified extension and mime-type!
     cors:[hostname]:[path-to-cors-handler] Attach a cors handler to a specific hostname!
     csp:[hostname]:[path-to-csp-handler] Attach a csp handler to a specific hostname!

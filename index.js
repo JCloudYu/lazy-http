@@ -480,6 +480,7 @@
 		
 		
 		
+		req.use_ssl = USE_SSL;
 		req.invisible_mode = INVISIBLE_PROXY;
 		req.server_info = INCOMING_SOCKET.server.address();
 		req.proxy_ip	= `${req.headers['x-real-ip']||''}`.trim();
